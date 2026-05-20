@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+.pytest_cache/
+
+# Backups from in-place edits — keep on disk, don't track
+*.v0.1
+*.broken
+*.bak
+*.pre-*-rebalance
+*.pre-*-fix
+*.pre-*-patch
+
+# Runtime state (lives in ~/.local/state/jarvis/, but defensive)
+state.json
+state.json.tmp
+daemon.log
+
+# Editor / OS noise
+.vscode/
+.idea/
+*.swp
+.DS_Store

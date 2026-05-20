@@ -23,7 +23,7 @@ Monarch idle VRAM baseline measured at 94% (23.1 GB / 24 GB) under standard mode
 - Cowork retired as a pipeline stage (formalized in Decision 4)
 - Six agent stacks restructured: synthesis-heavy components route to cloud; local retains plumbing, routing, light reasoning, and coder burst (T6)
 
-**Status:** Closed 2026-05-19. Already executed in practice (news Stage 4 DeepSeek V3 migration; financial intensive work routed to Anthropic API).
+**Status:** Closed 2026-05-19. Already executed in practice (news Stage 4 DeepSeek V4 Flash migration; financial intensive work routed to Anthropic API).
 
 ---
 
@@ -37,24 +37,24 @@ Cloud work is routed by task class to a defined provider tier. Cowork is retired
 | Task class | Primary | Overflow |
 |---|---|---|
 | Building / design (interactive, iterative) | Claude Pro (account A or B) | Kimi K2.6 → T6 local burst |
-| Synthesis (batch, scheduled, news) | DeepSeek V3 | Haiku 4.5 |
+| Synthesis (batch, scheduled, news) | DeepSeek V4 Flash | Haiku 4.5 |
 | Money-on-line (financial trades, NDA-tagged) | Anthropic API direct | — |
 | Light / latency-sensitive | Haiku 4.5 | — |
 | Local coder burst (NDA, quality-needed coding, Pro overflow) | T6 (monarch, Qwen3.6-35B-A3B) | — |
 
 **Provider priority (when task class is ambiguous):**
-Claude Pro → DeepSeek V3 → Kimi K2.6 → Haiku 4.5 → Anthropic API direct.
+Claude Pro → DeepSeek V4 Flash → Kimi K2.6 → Haiku 4.5 → Anthropic API direct.
 
 **Retired:**
 Cowork. No longer a pipeline stage. Existing references in stack CONTEXT.md files (consultancy / content / design / financial / leads / exploratory-coding) to be removed in the v19 doc pass.
 
 **Discipline rules:**
 
-- Two Claude Pro accounts are reserved for building/design. Do not burn Pro on synthesis that DeepSeek V3 can handle for cents.
+- Two Claude Pro accounts are reserved for building/design. Do not burn Pro on synthesis that DeepSeek V4 Flash can handle for cents.
 - Money-on-line work (live trading, NDA client work) routes to Anthropic API direct — never Pro, never DeepSeek, never Kimi.
 - T6 is the overflow valve: triggered when Pro walls, NDA prohibits cloud, or quality demands local coding.
 
-**Status:** Closed 2026-05-19. Partially executed (news Stage 4 on DeepSeek V3; financial intensive on API).
+**Status:** Closed 2026-05-19. Partially executed (news Stage 4 on DeepSeek V4 Flash; financial intensive on API).
 
 ---
 
@@ -88,7 +88,7 @@ Two subsystems receive full phase-level treatment in v19. Two are reduced in sco
 
 ## What Remains Open
 
-- **Decision 2 — Hermes adoption shape.** Pattern B parallel to n8n, Curator scope narrow or off, memory writes disabled, routed via DeepSeek V3 initially. Needs its own session.
+- **Decision 2 — Hermes adoption shape.** Pattern B parallel to n8n, Curator scope narrow or off, memory writes disabled, routed via DeepSeek V4 Flash initially. Needs its own session.
 - **Decision 3 — T6 operational defaults.** Qwen3.6-35B-A3B UD-Q4_K_XL, ~25% expert offload, 64K context, three named modes (comfort / conservative / aggressive). Blocked on 21 GB model download + spin-up tooling. Requires rebalance to land first.
 - **Decision 5 — Jarvis authority levels.** Three tiers (autonomous-immediate / autonomous-with-log / surface-and-ask), sleeping-window voice rules. Substrate ready (v0.2). Needs its own session.
 

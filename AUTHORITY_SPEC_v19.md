@@ -52,7 +52,7 @@ Jarvis acts and writes a `jarvis-q events` entry the operator can audit.
 | process.py · tier crashed (PID gone, was active) | Restart tier via `inference-up <tier>` | Idempotent; tier_health confirms |
 | process.py · tier flapping (restart_count_24h ≥ 3) | Stop restart loop, demote to Tier 3 surface | Don't keep restarting broken things |
 | vram.py · burst-only T2 idle > N min | Stop T2 (free 6.8 GB) | N = 30 min default |
-| quota.py · DeepSeek V3 spend > 80% monthly | Route subsequent batch calls to Haiku 4.5 | Reversible, free escalation |
+| quota.py · DeepSeek V4 Flash spend > 80% monthly | Route subsequent batch calls to Haiku 4.5 | Reversible, free escalation |
 | quota.py · LiteLLM tier 1 walled (429) | Escalate to tier 2 provider per Decision 4 cascade | Reversible |
 | vram.py · OOM imminent (free < 500 MiB) | Pause lowest-priority active workload | Workload priority TBD |
 | cron.py · git repo size > threshold | Schedule `git gc` for next idle window | Reversible |

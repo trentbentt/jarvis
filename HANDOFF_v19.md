@@ -12,7 +12,7 @@ This is the central forcing function for v19. Local cannot carry additional load
 
 **Inference stack:** five tiers running per `~/bin/inference-up`. Live since May 17. `fail()` patch applied May 19 — tmux survives tier failures now.
 
-**News pipeline:** Stages 1-5 wired and validated. Stage 4 migrated to DeepSeek V3. One full live cron-fired end-to-end run still outstanding. Lives in `~/projects/news-pipeline/` (git initialized).
+**News pipeline:** Stages 1-5 wired and validated. Stage 4 migrated to DeepSeek V4 Flash. One full live cron-fired end-to-end run still outstanding. Lives in `~/projects/news-pipeline/` (git initialized).
 
 **Model storage:** HF cache at `~/.cache/huggingface/hub/` (26 GB after cleanup of unused phi-4 transformers cache May 19). All tiers load via `-hf` shortcut. No `~/models/` migration planned.
 
@@ -40,7 +40,7 @@ These collectively unlock v19. Most are not yet formally written down.
 | 1 | Architectural reframe: local = data plumbing + agentic glue + on-demand coder burst. Cloud = synthesis + building + frontier reasoning. | NOT FORMALLY CONFIRMED but operator instinct + 94% baseline math force it |
 | 2 | Hermes Pattern B adoption (parallel to n8n, Curator narrow-scope, memory disabled, routed cloud initially) | OPEN |
 | 3 | T6 defaults: Qwen3.6-35B-A3B UD-Q4_K_XL, 25% expert offload, 64K context | OPEN; model not downloaded |
-| 4 | Cloud routing chain: Pro → DeepSeek V3 → Kimi K2.6 → Haiku → Anthropic direct. Cowork retired. | PARTIALLY EXECUTED in news pipeline; doc-formalization needed |
+| 4 | Cloud routing chain: Pro → DeepSeek V4 Flash → Kimi K2.6 → Haiku → Anthropic direct. Cowork retired. | PARTIALLY EXECUTED in news pipeline; doc-formalization needed |
 | 5 | Jarvis authority levels (immediate / with-log / surface-and-ask) | OPEN |
 | 6 | v19 scope: Jarvis + Financial = phase-level; Nexus = design only; 2nd Brain = deferred | OPEN |
 

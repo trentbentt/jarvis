@@ -1,7 +1,7 @@
 # v19 Standard Mode Rebalance Proposal
 
 **Date:** 2026-05-19
-**Status:** DRAFT — proposal, not committed
+**Status:** Change 1 EXECUTED 2026-05-20 (live-validated 66.1% baseline); Changes 2-3 pending
 **Authority:** Decisions 1 and 4 (closed in `DECISIONS_v19.md`)
 **Measurement source:** Jarvis v0.2 telemetry
 **Goal:** Reduce idle VRAM baseline from 94% → ≤ 60% to enable T6 burst, LoRA loading, and active workload headroom
@@ -60,7 +60,7 @@ Two-thirds of the deficit closes from T2 alone. The rest is optional — measure
 - News pipeline Stage 2 sector synthesis (validated local workload, daily-ish)
 - Possibly: financial pipeline classification windows
 - Manual operator invocation for specific tasks
-- Everything heavier routes to DeepSeek V3 or Pro
+- Everything heavier routes to DeepSeek V4 Flash or Pro
 
 **Burst lifecycle:**
 

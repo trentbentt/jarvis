@@ -37,12 +37,12 @@ These collectively unlock v19. Most are not yet formally written down.
 
 | # | Decision | State |
 |---|----------|-------|
-| 1 | Architectural reframe: local = data plumbing + agentic glue + on-demand coder burst. Cloud = synthesis + building + frontier reasoning. | NOT FORMALLY CONFIRMED but operator instinct + 94% baseline math force it |
+| 1 | Architectural reframe: local = data plumbing + agentic glue + on-demand coder burst. Cloud = synthesis + building + frontier reasoning. | CLOSED 2026-05-19 — see DECISIONS_v19.md |
 | 2 | Hermes Pattern B adoption (parallel to n8n, Curator narrow-scope, memory disabled, routed cloud initially) | OPEN |
 | 3 | T6 defaults: Qwen3.6-35B-A3B UD-Q4_K_XL, 25% expert offload, 64K context | OPEN; model not downloaded |
-| 4 | Cloud routing chain: Pro → DeepSeek V4 Flash → Kimi K2.6 → Haiku → Anthropic direct. Cowork retired. | PARTIALLY EXECUTED in news pipeline; doc-formalization needed |
+| 4 | Cloud routing chain: Pro → DeepSeek V4 Flash → Kimi K2.6 → Haiku → Anthropic direct. Cowork retired. | CLOSED 2026-05-19 — see DECISIONS_v19.md |
 | 5 | Jarvis authority levels (immediate / with-log / surface-and-ask) | OPEN |
-| 6 | v19 scope: Jarvis + Financial = phase-level; Nexus = design only; 2nd Brain = deferred | OPEN |
+| 6 | v19 scope: Jarvis + Financial = phase-level; Nexus = design only; 2nd Brain = deferred | CLOSED 2026-05-19 — see DECISIONS_v19.md |
 
 Operator preferences expressed in v18 thread:
 - Financial intensive work routes to API (money-on-line discipline)
@@ -51,7 +51,7 @@ Operator preferences expressed in v18 thread:
 - T6 is overflow valve when Pro walls, NDA-tagged work, or quality-needed local coding
 - Jarvis is **manager first**, voice assistant a distant second
 
-## Standard Mode Rebalance — Sketched, Not Built
+## Standard Mode Rebalance — Change 1 Executed (Change 2 Pending)
 
 Target: baseline ≤ 80% (≤ 19.6 GB) to leave headroom for T6 and active workloads.
 
@@ -61,7 +61,7 @@ Proposed:
 - T4: optionally reduce -np 4 → -np 2, frees ~1 GB
 - Result: baseline ~14-15 GB / 60% — plenty of room for T6 expert-offload burst
 
-Not committed. Requires Decisions 1 and 4 to lock first.
+Change 1 (T2 → burst-only) executed and live-validated 2026-05-20: t2-down baseline 66.1% measured via jarvis-q vram, idempotent, Jarvis catches transitions inside 5s polling. Change 2 (T1 ctx 36K → 24K) gated on cold-cycle test of inference-up patch. Change 3 (T4 -np 4 → 2) deferred per REBALANCE_v19.md.
 
 ## Open Issues / Hygiene
 

@@ -24,3 +24,5 @@ daemon.log
 *.swp
 .DS_Store
 .patch-backups/
+*.preB-backup
+*.zombie-fix-backup

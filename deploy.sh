@@ -7,7 +7,7 @@
 #   2. Installs pydantic into the inference venv (already present via litellm)
 #   3. Creates state/log directories
 #   4. Installs jarvis-q symlink into ~/bin/
-#   5. Adds a 'jarvis' window to the inference tmux session
+#   5. Adds a 'jarvis' window to the control tmux session (v19 Path B)
 #   6. Verifies the daemon starts and produces a state file
 
 set -euo pipefail
@@ -16,6 +16,13 @@ JARVIS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV="${VENV:-$HOME/venv/inference}"
 STATE_DIR="$HOME/.local/state/jarvis"
 BIN_DIR="$HOME/bin"
+
+# ─── Topology (v19 Path B) ──────────────────────────────────────────────────
+# Jarvis runs in the long-lived `control` tmux session alongside T1/LiteLLM/
+# validation-gate/lora-dispatcher. Survives `inference-down`. See ~/bin/inference-up
+# for the full topology block. The session is created by inference-up; this
+# script expects it to exist before the daemon window can be added.
+CONTROL_SESSION="${CONTROL_SESSION:-control}"
 
 red()    { printf '\033[31m%s\033[0m\n' "$*"; }
 green()  { printf '\033[32m%s\033[0m\n' "$*"; }
@@ -69,20 +76,20 @@ print('Package imports OK')
 " || { red "Import check failed — check the output above"; exit 1; }
 green "Package imports ✓"
 
-# ─── Start daemon in inference tmux session ───────────────────────────────────
-if tmux has-session -t inference 2>/dev/null; then
-  # Kill any existing jarvis window first
-  tmux kill-window -t inference:jarvis 2>/dev/null || true
+# ─── Start daemon in control tmux session ────────────────────────────────────
+if tmux has-session -t "${CONTROL_SESSION}" 2>/dev/null; then
+  # Kill any existing jarvis window first (idempotent re-deploy)
+  tmux kill-window -t "${CONTROL_SESSION}":jarvis 2>/dev/null || true
   sleep 1
 
-  tmux new-window -t inference -n jarvis \
+  tmux new-window -t "${CONTROL_SESSION}" -n jarvis \
     "source $VENV/bin/activate && \
      cd $JARVIS_DIR && \
      JARVIS_STATE_PATH=$STATE_DIR/state.json \
      JARVIS_LOG_PATH=$STATE_DIR/daemon.log \
      python3 daemon.py 2>&1 | tee $STATE_DIR/daemon.log"
 
-  green "Daemon window created: tmux attach -t inference → jarvis"
+  green "Daemon window created: tmux attach -t ${CONTROL_SESSION} → jarvis"
 
   # Wait up to 45s for the state file to appear
   yellow "Waiting for first state write (up to 45s)…"
@@ -93,7 +100,7 @@ if tmux has-session -t inference 2>/dev/null; then
     fi
     sleep 1
     if [ "$i" -eq 45 ]; then
-      red "State file not written in 45s — check: tmux attach -t inference → jarvis window"
+      red "State file not written in 45s — check: tmux attach -t ${CONTROL_SESSION} → jarvis window"
       exit 1
     fi
   done
@@ -103,11 +110,12 @@ if tmux has-session -t inference 2>/dev/null; then
   python3 "$JARVIS_DIR/bin/jarvis-q" health 2>/dev/null || yellow "(jarvis-q health returned non-zero — first run may have unknown states)"
 
 else
-  yellow "No 'inference' tmux session found."
-  yellow "Start the daemon manually after running inference-up:"
+  yellow "No '${CONTROL_SESSION}' tmux session found."
+  yellow "Run ~/bin/inference-up first (it creates the control session), then re-run deploy.sh."
+  yellow "Or start the daemon manually:"
   echo ""
-  echo "  tmux attach -t inference"
-  echo "  # Open a new window: Ctrl+B c"
+  echo "  tmux new-session -d -s ${CONTROL_SESSION} -n bootstrap 'sleep infinity'"
+  echo "  tmux new-window -t ${CONTROL_SESSION} -n jarvis"
   echo "  source ~/venv/inference/bin/activate"
   echo "  cd ~/projects/jarvis && python3 daemon.py"
 fi
@@ -120,5 +128,5 @@ echo "  Query:   jarvis-q all"
 echo "  VRAM:    jarvis-q vram"
 echo "  Health:  jarvis-q health"
 echo "  Events:  jarvis-q events"
-echo "  Daemon:  tmux attach -t inference → jarvis window"
+echo "  Daemon:  tmux attach -t ${CONTROL_SESSION} → jarvis window"
 echo "  Logs:    tail -f $STATE_DIR/daemon.log"

@@ -129,13 +129,14 @@ def cmd_health(model) -> None:
             HealthStatus.UNRESPONSIVE: red("UNRESPONSIVE"),
             HealthStatus.DEGRADED:     yellow("DEGRADED    "),
             HealthStatus.STOPPED:      dim("STOPPED     "),
+            HealthStatus.IDLE:         dim("IDLE        "),
             HealthStatus.ERROR:        red("ERROR       "),
             HealthStatus.UNKNOWN:      dim("UNKNOWN     "),
         }.get(comp.status, str(comp.status))
 
         ms_str = f"{comp.response_ms}ms" if comp.response_ms else "—"
         port_str = f":{comp.port}" if comp.port else ""
-        last_ok = _ago(comp.last_seen_healthy) if comp.status != HealthStatus.OK else ""
+        last_ok = _ago(comp.last_seen_healthy) if comp.status not in (HealthStatus.OK, HealthStatus.IDLE) else ""
         detail = f"  {dim(comp.detail)}" if comp.detail else ""
 
         print(f"  {comp.name:<24} {status_str}  {ms_str:<6}  {port_str:<6}{last_ok}{detail}")

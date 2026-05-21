@@ -42,6 +42,7 @@ class HealthStatus(str, Enum):
     DEGRADED     = "degraded"
     UNRESPONSIVE = "unresponsive"
     STOPPED      = "stopped"    # expected stopped (by profile)
+    IDLE         = "idle"       # burst-only tier, cleanly offloaded (marker file present)
     ERROR        = "error"
     UNKNOWN      = "unknown"
 

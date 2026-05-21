@@ -36,6 +36,30 @@ _HEALTH_PATHS: dict[str, str] = {
 
 _TCP_ONLY = {"postgres"}
 
+# Marker file written by ~/bin/t2-down on clean teardown, removed by ~/bin/t2-up.
+# When a burst_only tier is unresponsive AND this marker exists, the listener
+# reports IDLE (clean offload) instead of UNRESPONSIVE (unexpected failure).
+T2_IDLE_MARKER = "/home/monarch/.local/state/inference/t2_idle_marker"
+
+
+def _is_burst_idle(comp_name: str, snap) -> bool:
+    """Return True if the component is mapped to a burst_only tier AND the
+    idle marker file exists on disk. Caller has already established the
+    component is unresponsive."""
+    import os
+    tier_id = None
+    for tid, cname in _TIER_TO_COMPONENT.items():
+        if cname == comp_name:
+            tier_id = tid
+            break
+    if tier_id is None:
+        return False
+    tier = snap.tiers.get(tier_id)
+    if tier is None or not tier.config.burst_only:
+        return False
+    return os.path.exists(T2_IDLE_MARKER)
+
+
 
 def _http_check(port: int, path: str, timeout: float = 3.0) -> tuple[bool, int]:
     url = f"http://127.0.0.1:{port}{path}"
@@ -98,7 +122,15 @@ class TierHealthListener(BaseListener):
                 path = _HEALTH_PATHS.get(comp.name, "/health")
                 healthy, ms = _http_check(comp.port, path)
 
-            new_status = HealthStatus.OK if healthy else HealthStatus.UNRESPONSIVE
+            if healthy:
+                new_status = HealthStatus.OK
+                new_detail = None
+            elif _is_burst_idle(comp.name, snap):
+                new_status = HealthStatus.IDLE
+                new_detail = "deepseek fallback active (clean idle)"
+            else:
+                new_status = HealthStatus.UNRESPONSIVE
+                new_detail = f"no response on :{comp.port}"
             new_comp = ComponentHealth(
                 name=comp.name,
                 port=comp.port,
@@ -106,7 +138,7 @@ class TierHealthListener(BaseListener):
                 last_check=now,
                 last_seen_healthy=now if healthy else comp.last_seen_healthy,
                 response_ms=ms if healthy else None,
-                detail=None if healthy else f"no response on :{comp.port}",
+                detail=new_detail,
             )
             updated_components.append(new_comp)
 
@@ -121,6 +153,9 @@ class TierHealthListener(BaseListener):
             if comp.status == HealthStatus.OK and old_state == TierState.STOPPED:
                 transitions.append((tier_id, "stopped_to_active",
                                     f"{tier_id} transitioned stopped -> active"))
+            elif comp.status == HealthStatus.IDLE and old_state == TierState.ACTIVE:
+                transitions.append((tier_id, "active_to_idle",
+                                    f"{tier_id} entered burst-idle; deepseek fallback active"))
             elif comp.status == HealthStatus.UNRESPONSIVE and old_state == TierState.ACTIVE:
                 transitions.append((tier_id, "active_to_failed",
                                     f"{tier_id} unresponsive on :{old_tier.config.port}"))
@@ -143,6 +178,11 @@ class TierHealthListener(BaseListener):
                     tier.runtime.last_health_check = now
                     if tier.runtime.state == TierState.STOPPED:
                         tier.runtime.state = TierState.ACTIVE
+                elif comp.status == HealthStatus.IDLE:
+                    tier.runtime.health_status = HealthStatus.IDLE
+                    tier.runtime.last_health_check = now
+                    if tier.runtime.state == TierState.ACTIVE:
+                        tier.runtime.state = TierState.STOPPED
                 else:
                     tier.runtime.health_status = HealthStatus.UNRESPONSIVE
                     tier.runtime.last_health_check = now
@@ -156,6 +196,12 @@ class TierHealthListener(BaseListener):
                 store.emit(
                     type="tier_state_change", tier=tier_id, detail=detail,
                 )
+            elif kind == "active_to_idle":
+                store.emit(
+                    type="tier_burst_idle_entered",
+                    tier=tier_id,
+                    detail=detail,
+                )
             elif kind == "active_to_failed":
                 store.emit(
                     type="tier_health_failed",
@@ -168,3 +214,6 @@ class TierHealthListener(BaseListener):
             if comp.status == HealthStatus.UNRESPONSIVE:
                 logger.warning("[tier_health] %s unresponsive on :%s",
                                comp.name, comp.port)
+            elif comp.status == HealthStatus.IDLE:
+                logger.info("[tier_health] %s burst-idle on :%s (deepseek fallback)",
+                            comp.name, comp.port)

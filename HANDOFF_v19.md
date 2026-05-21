@@ -1,14 +1,105 @@
 # Jarvis & v19 Handoff — 2026-05-19
 
+## What Jarvis Is (Architectural Framing)
+
+*Added 2026-05-20. This section establishes the unifying frame for all v19
+work. Subsystem-specific docs (DECISIONS, REBALANCE, AUTHORITY_SPEC,
+PHASE2_SPEC) describe the parts; this section describes the whole.*
+
+Jarvis is not an observability daemon with notifications. Jarvis is the
+**central nervous system of the monarch stack** — the operator's canonical
+entry point and the system's internal coordination layer.
+
+### What Jarvis does (function taxonomy)
+
+**Frontend (operator-facing) roles:**
+
+- **Manager** — the operator delegates to Jarvis instead of addressing
+  individual subsystems. The operator doesn't inspect the validation
+  gate; they ask Jarvis. The operator doesn't watch news pipeline logs;
+  they ask Jarvis what happened with news this morning. *(Manager first,
+  voice assistant a distant second.)*
+- **Personal assistant** — morning briefings, schedule awareness,
+  proactive surfacing of what needs attention.
+- **Voice interface** — voice-to-voice (Phase 18), distinct from
+  Phase 17.5's voice-to-text for agent harnesses.
+- **Notification dispatcher** — voice / PWA push / ntfy.sh, with
+  authority-tier-aware quieting (sleep window, severity ladder).
+- **Documentation router** — operator asks "where's the doc for X" and
+  Jarvis points to the right repo/file/section.
+
+**Backend (machine-facing) roles:**
+
+- **Substrate orchestrator** — dispatches workloads across four execution
+  substrates based on latency, quality, and resource availability:
+  GPU VRAM, system RAM (via CPU inference + expert offload),
+  CPU compute, and cloud API. The same workload may land on different
+  substrates on different days depending on current resource state.
+- **Horizontal coordinator** — relays state and signals between agent
+  workflows (news pipeline, financial pipeline, Hermes when adopted,
+  LoRA dispatcher).
+- **Knowledge bridge** — eventual interface to 2nd Brain (deferred per
+  Decision 6) and Nexus (design-only per Decision 6) for "what do we
+  know about X" queries.
+- **Observability layer** — schema-driven state model, listener threads,
+  event log. The IDLE-vs-UNRESPONSIVE work shipped 2026-05-20 lives here.
+- **Event router** — receives completion/failure/anomaly signals from
+  every pipeline and decides where they need to surface.
+
+### The architectural test
+
+Every subsystem built from v19 forward must answer four questions
+about its relationship to Jarvis:
+
+1. **Can Jarvis observe it?** (state, health, activity signals)
+2. **Can Jarvis dispatch to it?** (start/stop/route work to it)
+3. **Can Jarvis surface its events?** (completions, failures, anomalies)
+4. **Can Jarvis explain it?** (point operator at docs, recent activity,
+   relevant errors)
+
+A subsystem failing any of these isn't broken — but it isn't fully
+integrated into the operator's canonical entry point. Direct operation
+of subsystems remains supported and necessary for debugging. The
+Jarvis-facing interface is what makes the system feel like one system
+instead of seven.
+
+### How this reframes the open queue
+
+Items in the bootstrap's Tier A–E aren't independent operational chores.
+They're foundational substrate work the manager will rely on:
+
+- Cold cycle validation → manager can trust burst-mode transitions
+- Phase 2 listeners (process, quota, cron) → manager has full
+  situational awareness
+- Authority spec → operator's contract with the manager about
+  autonomous action
+- inference-down patch → substrate teardown safe for manager to invoke
+- Rebalance Changes 2/3 → headroom for manager to allocate
+- T6 spin-up tooling → another substrate the manager dispatches to
+
+The v19 master summary, when written, should treat Jarvis as the
+through-line. Subsystems compose around it.
+
+The full Jarvis vision (substrate decision matrix, LoRA routing model,
+knowledge-bridge interface design, documentation-router lookup model)
+is deferred to a dedicated session producing `JARVIS_VISION_v19.md`.
+This section is the seed of that vision, captured before drift loses it.
+
+---
+
 ## Where We Are
 
 Mid-transition from master_summary_v18 → v19. Building Jarvis (system manager + observability layer) as the foundation before locking v19 doctrine.
 
 ## Hard Facts on Disk
 
-**Monarch baseline:** 94% VRAM utilization at idle, no active workloads.
+**Monarch baseline (historical — v18 era):** 94% VRAM utilization at idle, no active workloads.
 T1 (11.8 GB) + T2 (6.8 GB) + T4 (4.2 GB) + driver (0.5 GB) = 23.1 GB / 24 GB.
-This is the central forcing function for v19. Local cannot carry additional load without restructuring.
+This was the central forcing function for v19 doctrine — local cannot carry additional load without restructuring. Drove Decision 1 (architectural reframe) and Rebalance Change 1 (T2 burst-only).
+
+**Monarch baseline (current — post-Rebalance Change 1):** 66.0% VRAM at idle, measured 2026-05-20 across a full cold-cycle teardown and rebuild.
+T1 (11.8 GB) + T4 (4.2 GB) + driver (0.5 GB) = 16.5 GB / 24 GB.
+T2 is `burst_only` per schema, brought up on-demand via `~/bin/t2-up`, idle-by-default with DeepSeek V4 Flash fallback for pipeline calls (status: IDLE in `jarvis-q health`). Reproducible across the cold cycle — the 94% → 66% delta is durable, not a transient observation.
 
 **Inference stack:** five tiers running per `~/bin/inference-up`. Live since May 17. `fail()` patch applied May 19 — tmux survives tier failures now.
 

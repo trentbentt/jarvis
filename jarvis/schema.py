@@ -379,7 +379,7 @@ MONARCH_TIERS: Dict[str, TierConfig] = {
     "t1": TierConfig(
         tier_id="t1", enabled=True,
         model="Qwen3.6-27B", quant="UD-Q4_K_XL",
-        context_size=36864, parallelism_np=1, port=8080,
+        context_size=24576, parallelism_np=1, port=8080,
     ),
     "t2": TierConfig(
         tier_id="t2", enabled=True,

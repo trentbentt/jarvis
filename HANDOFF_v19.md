@@ -244,6 +244,17 @@ from the dataplane's.
 Rollback is one `mv` per file. Filtered from the repo via `.gitignore`
 patterns `*.preB-backup` and `*.zombie-fix-backup`.
 
+### Principle exposed
+
+Path B is a worked example of a broader pattern: when a Tier 3
+(surface-and-ask) prompt fires repeatedly for the same underlying
+reason, the right move is sometimes architectural elimination, not
+tighter criteria. The `[y/N]` straggler prompt in pre-Path-B
+`inference-down` was the operator's last line of defense against a
+destructive default. Path B removed the *need* for defense by removing
+the failure mode. Future authority decisions should consider this
+option when a Tier 3 keeps recurring: redesign rather than refine.
+
 ## Open Issues / Hygiene
 
 - `ref-blueprint §Phase 15` body is stale (CONTEXT.md flags this)

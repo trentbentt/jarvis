@@ -26,3 +26,4 @@ daemon.log
 .patch-backups/
 *.preB-backup
 *.zombie-fix-backup
+*.preB-section-backup

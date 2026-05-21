@@ -142,7 +142,7 @@ Operator preferences expressed in v18 thread:
 - T6 is overflow valve when Pro walls, NDA-tagged work, or quality-needed local coding
 - Jarvis is **manager first**, voice assistant a distant second
 
-## Standard Mode Rebalance — Change 1 Executed (Change 2 Pending)
+## Standard Mode Rebalance — Change 1 Executed; Change 2 Patched (Measurement Deferred)
 
 Target: baseline ≤ 80% (≤ 19.6 GB) to leave headroom for T6 and active workloads.
 
@@ -153,6 +153,96 @@ Proposed:
 - Result: baseline ~14-15 GB / 60% — plenty of room for T6 expert-offload burst
 
 Change 1 (T2 → burst-only) executed and live-validated 2026-05-20: t2-down baseline 66.1% measured via jarvis-q vram, idempotent, Jarvis catches transitions inside 5s polling. Change 2 (T1 ctx 36K → 24K) gated on cold-cycle test of inference-up patch. Change 3 (T4 -np 4 → 2) deferred per REBALANCE_v19.md.
+
+## Path B — Dual-Session Topology (2026-05-21)
+
+Operational change to the tmux session topology. Promoted live on 2026-05-21
+and validated end-to-end via cold cycle test. The system now runs across
+**two tmux sessions** instead of one. The split mirrors v19 doctrine's
+control-plane / dataplane distinction structurally rather than via
+maintenance discipline.
+
+### Partition
+
+| Session | Lifetime | Windows | Notes |
+| --- | --- | --- | --- |
+| `control` | long-lived; survives `inference-down` | bootstrap, jarvis, validation-gate, lora-dispatcher, litellm, t1-interactive | T1 is the Jarvis-facing reasoning brain per Decision 1; LiteLLM routes to cloud during burst-down; vg/ld/jarvis are services, not tiers. |
+| `inference` | dataplane; cycle-safe | bootstrap, t3-content, t4-phi4, t5-small (+ t2-pipeline burst when up, t6-coder burst when deployed) | `tmux kill-session -t inference` is now semantically safe — only dataplane dies. |
+
+### Why this exists
+
+Pre-Path-B, `inference-down` ran `tmux kill-session -t inference` which
+took T1, LiteLLM, validation-gate, lora-dispatcher, and jarvis with it
+every time the dataplane needed to cycle. The teardown script then ran a
+straggler-kill prompt that offered to `sudo kill -9` the very services
+it had just (correctly) destroyed. The defensive design was: an operator
+would notice T1's PID in the list and decline. That depended on operator
+attention at the moment of cycle.
+
+Path B removes the need for defense by removing the failure mode. Control-
+plane services live in a separate session whose lifetime is decoupled
+from the dataplane's.
+
+### What changed
+
+**Operator scripts (not in repo, edited in parallel):**
+
+- `~/bin/inference-up` — dual-session aware. Creates `control` session
+  if missing (idempotent). Per-service `already_up` port-check guards
+  skip launches for control-plane services already running. Smoke
+  tests still run unconditionally. Zombie-check rewritten to filter
+  control-session survivors as expected (via parent-walk PID→session
+  resolution); only non-control GPU processes abort the bringup.
+- `~/bin/inference-down` — kills only `inference` session. Surviving
+  GPU processes are inspected and reported with tmux affiliation, not
+  killed. No force-kill prompt under any flag.
+- `~/bin/t2-up`, `~/bin/t2-down` — unchanged. Both already used
+  `TMUX_SESSION="inference"` as a variable; T2 is dataplane.
+
+**Repo file (commit `9858a6a`):**
+
+- `deploy.sh` — Jarvis daemon window now created in `${CONTROL_SESSION}`
+  instead of `inference`.
+
+### Validation evidence (2026-05-21 04:14–04:21 EDT)
+
+- `tmux move-window` verified safe for a VRAM-resident llama-server. T1
+  retained its 12 GB VRAM allocation, stayed bound on :8080, and passed
+  a coherence test (`OK`) immediately after the move and again after a
+  full dataplane cycle.
+- Jarvis daemon writer thread maintained its documented 10s cadence
+  through the session reassignment (mtime advanced 04:15:21 → 04:15:31).
+- Full cold cycle: `inference-down` → 12,067 MiB VRAM (T1 + driver +
+  jarvis tracking only, control session intact) → `inference-up`
+  exercised the idempotent path (T1/LiteLLM/VG/LD all reported "already
+  serving — skipping launch") → 16,247 MiB (back to baseline).
+
+### Implications for future work
+
+- Phase 2 listeners (`process.py`, `quota.py`, `cron.py`) can rely on
+  T1 + LiteLLM + jarvis being co-located in `control` and durable across
+  dataplane cycles. No special handling for "is T1 currently up?" needed
+  in those listeners.
+- Decision 5 (Jarvis authority) — the `inference-down` rewrite removed
+  an `[y/N]` prompt that asked operator confirmation for a destructive
+  action. That kind of script-level safety question gets simpler under
+  Path B because the dangerous case (killing the preserve list) is
+  structurally impossible now.
+- Rebalance Change 2 measurement (T1 at 24K context) — still deferred.
+  T1 survives the cycle by design under Path B, so the schema/launch-
+  line patch in `c0f7ea7` lands naturally on next T1 restart (reboot,
+  explicit control-session kill, or operator-initiated T1 cycle).
+
+### Backups on disk (operator-side, not in repo)
+
+- `~/bin/inference-up.preB-backup` — pre-topology version
+- `~/bin/inference-up.zombie-fix-backup` — Path B version before the
+  zombie-check rewrite (intermediate, kept for diff reference)
+- `~/bin/inference-down.preB-backup` — pre-Path-B teardown script
+- `~/projects/jarvis/deploy.sh.preB-backup` — local backup; ignored by git
+
+Rollback is one `mv` per file. Filtered from the repo via `.gitignore`
+patterns `*.preB-backup` and `*.zombie-fix-backup`.
 
 ## Open Issues / Hygiene
 

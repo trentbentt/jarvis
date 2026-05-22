@@ -303,8 +303,8 @@ class OperatorPreferences(BaseModel):
     voice_during_active: bool   = True
     voice_during_idle: bool     = False
     voice_during_sleeping: bool = False
-    sleeping_window_start: str  = "22:30"
-    sleeping_window_end: str    = "06:00"
+    overnight_window_start: str = "23:00"
+    overnight_window_end: str   = "07:00"
 
 class Operator(BaseModel):
     state: OperatorState          = OperatorState.UNKNOWN

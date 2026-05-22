@@ -1,9 +1,20 @@
 # Jarvis Authority Spec (Decision 5 — Draft)
 
-**Date:** 2026-05-19 (draft); 2026-05-21 (Items 1-3 revise pass)
-**Status:** DRAFT — Decision 5 walkthrough Items 1-3 banked; Items 4-8 pending operator confirmation
+**Date:** 2026-05-19 (draft); 2026-05-21 (Items 1-3 + Item 4 revise passes)
+**Status:** DRAFT — Decision 5 walkthrough Items 1-4 banked; Items 5-8 pending operator confirmation
 **Scope:** Jarvis + financial pipeline action surface (per Decision 6)
-**Operator confirmation required on:** quota cascade thresholds, sleep window bounds, bypass severity ladder, Pro tier estimation, promotion threshold (N), cold-start rule
+**Operator confirmation required on:** quota cascade thresholds, bypass severity ladder thresholds, Pro tier estimation, promotion threshold (N), cold-start rule
+
+---
+
+## Hard Constraints
+
+Lines that do not move under any combination of resource pressure, operator absence, or scheduling priority. The cascades and policies below operate within these constraints, not against them.
+
+- **Jarvis never shuts off.** Jarvis is load-bearing for system boot and recovery — nothing else in the stack can bring tiers back if the daemon dies. Killing Jarvis is structurally forbidden, not just discouraged. Maximum degradation is conditional self-offload to RAM/CPU per the Substrate Pressure Cascade below.
+- **Jarvis identity never routes to API.** The daemon, T1 reasoning brain, listeners, and state store stay monarch-local under all pressure conditions. Two reasons: (a) routing the coordination layer to cloud exposes the entire system's credentials, dispatch decisions, and telemetry to an external surface; (b) Jarvis is high-traffic by design and monthly prepaid budgets would drain in days at cloud rates. Workloads route to API per the cascade below — the coordinator does not.
+- **Pause is not in the toolkit.** Under VRAM, latency, or quota pressure, Jarvis re-routes work — never blocks it. The Substrate Pressure Cascade, latency-band routing cascade (Tier 2), and Quota Cascade Policy together cover the response surface without resorting to pause-the-workload.
+- **T1 restart is Tier 3, never silent.** T1 is the Jarvis reasoning brain. The manager does not silently restart its own brain. Operator confirmation gates any T1 restart action.
 
 ---
 
@@ -125,21 +136,26 @@ This policy supersedes two earlier entries from the 5/19 draft: the "DeepSeek > 
 
 ---
 
-## Sleep Window Rules
+## Overnight Workload Window
 
-Sleep window controls **notification channel**, not whether action happens.
+Doctrinal time window during which pipelines are scheduled, the Substrate Pressure Cascade Layer 2 (self-offload) is permitted, and voice/push notifications are quieted unless severity ladder bypass applies.
 
-**Window:** 23:00–07:00 America/New_York
-OPERATOR TO CONFIRM bounds and timezone (Raleigh = ET, confirmed).
+**Window (weekday baseline):** 23:00–07:00 America/New_York
 
-**What "voice off" means in window:**
+The window assumes a Monday–Friday 9-5 operator schedule. Weekend variability is acknowledged and deferred — once the post-9-5 weekend pattern stabilizes, a `weekend_window` doctrine will be specced separately.
 
-- Audio TTS suppressed
-- Push/mobile/desktop notification suppressed
-- Visual notifications still render to `jarvis-q events`
-- Action tiers 1/2/3 still apply unchanged — only notification channel quiet
+**What the window controls:**
 
-**Bypass severity ladder (audio/push allowed in window):**
+- **Scheduling preference.** Pipelines marked overnight-eligible (news ingestion at 05:15 / 05:30 / 06:00; financial Phase A pre-market when wired) target this window. Bound by cron.py listener (Phase 2 / not yet built).
+- **Substrate Pressure Cascade Layer 2 gating.** Conditional self-offload of Jarvis to RAM/CPU is permitted only within this window — see Substrate Pressure Cascade below.
+- **Notification channel.** Voice TTS and push notifications quieted within the window unless an event clears the bypass severity ladder. Visual notifications still render to `jarvis-q events`.
+- **Action tiers unchanged.** The window is a notification and substrate doctrine, not an authority gate. Tier 1/2/3 classification of actions does not change inside or outside the window.
+
+**Working-hours notification policy:** outside the overnight window — including weekday 9-5 working hours when the operator is away — voice/push notifications fire normally. Operator needs awareness of pipeline state, workflow failures, and outcome events ("trade completed profit = x", "workflow shutdown") when not at the keyboard.
+
+**Notification Interrupt Conditions (bypass severity ladder):**
+
+Events that interrupt the operator regardless of window state (audio/push allowed inside window for these classes).
 
 | Event class | Threshold | Rationale |
 |---|---|---|
@@ -149,9 +165,50 @@ OPERATOR TO CONFIRM bounds and timezone (Raleigh = ET, confirmed).
 | OOM imminent | free < 500 MiB | System-wide stability |
 | Power | UPS event / power loss | If power monitoring later added |
 
-OPERATOR TO CONFIRM thresholds.
+Threshold values still pending operator confirmation as Item 5 of the Decision 5 walkthrough.
 
-**Queued items batch-surface at 07:00:** Jarvis emits a morning brief listing all Tier 2 events from overnight + any Tier 3 items that held.
+**Queued items batch-surface at window end:** Jarvis emits a morning brief at window end (07:00 default) listing all Tier 2 events from overnight and any Tier 3 items held for surface.
+
+---
+
+## Substrate Pressure Cascade
+
+Jarvis's response to observed VRAM pressure is a three-layer cascade. Each layer is attempted in order; only when a layer is exhausted or unavailable does Jarvis advance to the next. **Pause is not in the toolkit** — Jarvis re-routes work, never blocks it (see Hard Constraints).
+
+### Layer 1 — Evict burst and utility tiers
+
+Free VRAM by stopping non-essential GPU residents. Standard Tier 2 actions (autonomous-with-log).
+
+**Eviction priority order** (highest to lowest):
+
+1. **T2 burst** (~6.8 GB) — call `t2-down`
+2. **T6 burst** (~17-19 GB, when active) — call `t6-down`
+3. **T4 reductions** — apply within tier's own documented operational range (e.g., `-np` reductions); does not stop T4
+
+T3 (CPU-only) and T5 (CPU-only) contribute zero VRAM and are not eviction targets.
+
+If Layer 1 frees sufficient VRAM, the cascade halts. Each eviction logs to `jarvis-q events`.
+
+### Layer 2 — Conditional self-offload (Tier 3 non-blocking)
+
+When Layer 1 is exhausted and pressure remains, Jarvis may self-offload reasoning capacity from VRAM to RAM/CPU. This layer is gated by two conditions:
+
+- **Inside the Overnight Workload Window.** Self-offload during weekday working hours, when the operator is away but expects notifications and possible interactive use upon return, is the wrong move. Outside the window, the cascade skips Layer 2 and advances to Layer 3.
+- **Operator does not veto within 120 seconds.** Layer 2 fires as a Tier 3 non-blocking action: Jarvis surfaces ("VRAM pressure persists after Layer 1; offloading T1 to RAM in 120s unless you veto"), then default-proceeds at timeout. Operator veto sends the cascade to Layer 3.
+
+**Floor — Scope B framework, value pending measurement:**
+
+Self-offload preserves Jarvis's functional capacity. T1 retains sufficient resource for operator-interactive queries and dispatch decisions. Below this floor, further offload is itself a failure mode and the cascade advances to Layer 3 rather than reducing further. Numeric value (T1 minimum VRAM, minimum tok/s observed throughput, or both) deferred until measurement data exists.
+
+### Layer 3 — Route workloads to API
+
+When Layer 1 is exhausted and Layer 2 is unavailable (outside window) or vetoed, workloads route to cloud providers per the Decision 4 cascade, bounded by the Quota Cascade Policy.
+
+**Routing constraints:**
+
+- **Workloads route, the coordinator does not.** Per Hard Constraints, Jarvis identity (daemon, T1, listeners, state) never routes to API. Only workloads — news synthesis, financial analysis, coding bursts, etc. — are eligible for cloud routing.
+- **Quota Cascade Policy gates cascade depth.** If quota thresholds escalate to Tier 3 mid-cascade, Jarvis surfaces and stops.
+- **All routes exhausted → Tier 3 surface.** If Layer 3 is quota-capped, Layer 2 is unavailable, and Layer 1 is already minimal, the failing workload escalates to Tier 3 (latency cascade failed, per the Tier 3 action table). Operator decides next move.
 
 ---
 
@@ -217,8 +274,8 @@ Before closing Decision 5, operator confirms:
 - [x] Tier 1 action list (no surprises) — banked 2026-05-21 walkthrough Item 1
 - [x] Tier 2 action list (routing escalations, tier restart policy, latency-band cascade) — banked 2026-05-21 walkthrough Item 2
 - [x] Tier 3 action list (money-on-line, T1 restart, latency cascade failed) — banked 2026-05-21 walkthrough Item 3
+- [x] Overnight Workload Window (weekday 23:00-07:00 ET; weekend deferred; Substrate Pressure Cascade Layer 2 gated by window; self-offload floor Scope B framework only) — banked 2026-05-21 walkthrough Item 4
 - [ ] Quota cascade policy thresholds (20% / 10% under prepaid model) — partner-derived from operator constraint; explicit numeric ratification pending
-- [ ] Sleep window bounds (Item 4 — pending)
 - [ ] Bypass severity ladder thresholds (Item 5 — pending)
 - [ ] Pro tier estimation (~250 msg/5h Pro Max vs ~50 msg/5h standard) (Item 6 — pending)
 - [ ] Promotion threshold N (default 10) (Item 7 — pending)

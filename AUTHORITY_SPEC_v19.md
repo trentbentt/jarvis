@@ -1,7 +1,7 @@
 # Jarvis Authority Spec (Decision 5 — Draft)
 
-**Date:** 2026-05-19 (draft); 2026-05-21 (Items 1-3 + Item 4 revise passes)
-**Status:** DRAFT — Decision 5 walkthrough Items 1-4 banked; Items 5-8 pending operator confirmation
+**Date:** 2026-05-19 (draft); 2026-05-21 (Items 1-5 revise passes)
+**Status:** DRAFT — Decision 5 walkthrough Items 1-5 banked; Items 6-8 pending operator confirmation
 **Scope:** Jarvis + financial pipeline action surface (per Decision 6)
 **Operator confirmation required on:** quota cascade thresholds, bypass severity ladder thresholds, Pro tier estimation, promotion threshold (N), cold-start rule
 
@@ -159,13 +159,14 @@ Events that interrupt the operator regardless of window state (audio/push allowe
 
 | Event class | Threshold | Rationale |
 |---|---|---|
-| GPU thermal | temp > 85°C sustained 60s | Hardware damage risk |
-| Security | fail2ban escalation, SSH breach attempt | Compromise risk |
-| Spend burst | > $5 in < 5 min on any single provider | Runaway agent / budget bleed |
-| OOM imminent | free < 500 MiB | System-wide stability |
-| Power | UPS event / power loss | If power monitoring later added |
+| GPU thermal | temp > 85°C sustained 60s | Hardware damage risk; 3090 throttle at 93°C — 85°C/60s gives operator-in-loop time before thermal throttling kicks in |
+| Security | fail2ban escalation, SSH breach attempt | Compromise risk; broad framing intentional — operator uses multiple IPs / VPNs, narrower triggers would false-negative |
+| Spend burst | > $5 in < 5 min on any single provider | Runaway agent / budget bleed; prepaid keys and provider-side budget caps make this a "something is wrong" signal, not a routine event |
+| RAM exhaustion | RAM free < 500 MiB | Kernel OOM-killer territory; threatens Jarvis daemon survival (Hard Constraints) — cascade cannot help |
+| VRAM cascade exhausted | VRAM free < 500 MiB AND Quota Cascade in Tier 3 surface | Substrate Pressure Cascade ran out of moves; operator decision required |
+| Power *(deferred)* | UPS event / power loss | Not yet wired — no UPS monitoring listener in Phase 2 / v19. Row preserved as doctrine debt; threshold and trigger to be specified when monitoring infrastructure exists. |
 
-Threshold values still pending operator confirmation as Item 5 of the Decision 5 walkthrough.
+Thresholds ratified 2026-05-21 walkthrough Item 5. Power row carried as deferred entry pending listener implementation.
 
 **Queued items batch-surface at window end:** Jarvis emits a morning brief at window end (07:00 default) listing all Tier 2 events from overnight and any Tier 3 items held for surface.
 
@@ -173,42 +174,50 @@ Threshold values still pending operator confirmation as Item 5 of the Decision 5
 
 ## Substrate Pressure Cascade
 
-Jarvis's response to observed VRAM pressure is a three-layer cascade. Each layer is attempted in order; only when a layer is exhausted or unavailable does Jarvis advance to the next. **Pause is not in the toolkit** — Jarvis re-routes work, never blocks it (see Hard Constraints).
+Jarvis's response to observed VRAM pressure is a **continuous intensity band**, not a sequential layer ladder. Three response kinds — eviction, self-offload, API routing — blend with scaling intensity as pressure rises across the band. Intensity recalibrates automatically as pressure eases. **Pause is not in the toolkit** — Jarvis re-routes work, never blocks it (see Hard Constraints).
 
-### Layer 1 — Evict burst and utility tiers
+**Stateless response:** Jarvis's response to pressure is a function of *current* observed VRAM free, not a function of past escalation state. There is no "exit cascade" logic — as VRAM free rises (because workloads moved, tiers freed, bursts finished), offload intensity drops to match the new pressure point.
 
-Free VRAM by stopping non-essential GPU residents. Standard Tier 2 actions (autonomous-with-log).
+### Intensity Band
 
-**Eviction priority order** (highest to lowest):
+| Free VRAM | Cascade state |
+|---|---|
+| > 2.5 GB | Normal operation — no cascade activity |
+| 2.5 GB → 500 MiB | **Active band** — offload intensity scales with pressure (three response kinds blend) |
+| < 500 MiB | API routing engaged (see "API switchover" below) |
 
-1. **T2 burst** (~6.8 GB) — call `t2-down`
-2. **T6 burst** (~17-19 GB, when active) — call `t6-down`
-3. **T4 reductions** — apply within tier's own documented operational range (e.g., `-np` reductions); does not stop T4
+The 2.5 GB / 1.5 GB / 750 MiB / 500 MiB markers are **intensity guideposts**, not discrete trigger thresholds. They describe how the cascade should *feel* across the band — by 1.5 GB free, T2 burst should typically be evicted; by 750 MiB, self-offload should be active when window-gated. The cascade is not implemented as a stack of `if VRAM < N` conditions; it is a continuous-pressure controller selecting the next-cheapest move.
 
-T3 (CPU-only) and T5 (CPU-only) contribute zero VRAM and are not eviction targets.
+**Percent-of-intensity assignment per response kind is Scope B framework, deferred to stress-testing data.** The spec records the band edges and the three response kinds; numeric calibration of the curve (how much evict vs how much self-offload at a given pressure point) waits for measurement.
 
-If Layer 1 frees sufficient VRAM, the cascade halts. Each eviction logs to `jarvis-q events`.
+### Response Kinds
 
-### Layer 2 — Conditional self-offload (Tier 3 non-blocking)
+The three kinds that blend across the intensity band:
 
-When Layer 1 is exhausted and pressure remains, Jarvis may self-offload reasoning capacity from VRAM to RAM/CPU. This layer is gated by two conditions:
+**Evict burst and utility tiers.** Standard Tier 2 actions (autonomous-with-log). Priority order: T2 burst (~6.8 GB, call `t2-down`) → T6 burst (~17-19 GB when active, call `t6-down`) → T4 reductions within the tier's own operational range. T3 (CPU-only) and T5 (CPU-only) contribute zero VRAM and are not eviction targets.
 
-- **Inside the Overnight Workload Window.** Self-offload during weekday working hours, when the operator is away but expects notifications and possible interactive use upon return, is the wrong move. Outside the window, the cascade skips Layer 2 and advances to Layer 3.
-- **Operator does not veto within 120 seconds.** Layer 2 fires as a Tier 3 non-blocking action: Jarvis surfaces ("VRAM pressure persists after Layer 1; offloading T1 to RAM in 120s unless you veto"), then default-proceeds at timeout. Operator veto sends the cascade to Layer 3.
+**Conditional self-offload (Tier 3 non-blocking).** Jarvis offloads reasoning capacity from VRAM to RAM/CPU. Gated by two conditions:
 
-**Floor — Scope B framework, value pending measurement:**
+- **Inside the Overnight Workload Window.** Self-offload during weekday working hours, when the operator is away but expects notifications and possible interactive use upon return, is the wrong move. Outside the window, self-offload is not in the cascade's available moves.
+- **Operator does not veto within 120 seconds.** Self-offload fires as a Tier 3 non-blocking action: Jarvis surfaces ("VRAM pressure persists; offloading T1 to RAM in 120s unless you veto"), then default-proceeds at timeout.
 
-Self-offload preserves Jarvis's functional capacity. T1 retains sufficient resource for operator-interactive queries and dispatch decisions. Below this floor, further offload is itself a failure mode and the cascade advances to Layer 3 rather than reducing further. Numeric value (T1 minimum VRAM, minimum tok/s observed throughput, or both) deferred until measurement data exists.
+Self-offload floor is Scope B framework, value pending measurement: T1 retains sufficient resource for operator-interactive queries and dispatch decisions. Below this floor, further offload is itself a failure mode.
 
-### Layer 3 — Route workloads to API
+**Route workloads to API.** Engages at the bottom of the intensity band (< 500 MiB free). Workloads route to cloud providers per the Decision 4 cascade, bounded by the Quota Cascade Policy.
 
-When Layer 1 is exhausted and Layer 2 is unavailable (outside window) or vetoed, workloads route to cloud providers per the Decision 4 cascade, bounded by the Quota Cascade Policy.
+### API Switchover
 
-**Routing constraints:**
+When API routing engages, the mechanism is **switch at next natural workload checkpoint** — token-stream end, batch-item boundary, message-turn end. In-flight GPU work runs to its next checkpoint, then the *next* unit of that workload routes to API. This avoids re-issue/dedup problems from hard-pulling in-flight work.
+
+Under imminent-crash pressure (approaching the 500 MiB floor with no successful checkpoint switchover yet), checkpoint granularity may shorten or be bypassed. Exact escalation behavior is **deferred to implementation against measured failure modes** — Scope B framework only.
+
+Once API is serving the routed workload, observed VRAM free rises and the cascade's intensity automatically recalibrates downward per the stateless-response principle above.
+
+### Routing Constraints
 
 - **Workloads route, the coordinator does not.** Per Hard Constraints, Jarvis identity (daemon, T1, listeners, state) never routes to API. Only workloads — news synthesis, financial analysis, coding bursts, etc. — are eligible for cloud routing.
-- **Quota Cascade Policy gates cascade depth.** If quota thresholds escalate to Tier 3 mid-cascade, Jarvis surfaces and stops.
-- **All routes exhausted → Tier 3 surface.** If Layer 3 is quota-capped, Layer 2 is unavailable, and Layer 1 is already minimal, the failing workload escalates to Tier 3 (latency cascade failed, per the Tier 3 action table). Operator decides next move.
+- **Quota Cascade Policy gates routing depth.** If quota thresholds escalate to Tier 3 mid-cascade, Jarvis surfaces and stops.
+- **All routes exhausted → notification interrupt.** If API routing is quota-capped, self-offload is unavailable (outside window) or already maxed, and evictions are exhausted, the cascade has run out of moves. Bypass severity ladder fires: operator notified regardless of window state. See "VRAM cascade exhausted" row in Notification Interrupt Conditions above.
 
 ---
 
@@ -274,9 +283,10 @@ Before closing Decision 5, operator confirms:
 - [x] Tier 1 action list (no surprises) — banked 2026-05-21 walkthrough Item 1
 - [x] Tier 2 action list (routing escalations, tier restart policy, latency-band cascade) — banked 2026-05-21 walkthrough Item 2
 - [x] Tier 3 action list (money-on-line, T1 restart, latency cascade failed) — banked 2026-05-21 walkthrough Item 3
-- [x] Overnight Workload Window (weekday 23:00-07:00 ET; weekend deferred; Substrate Pressure Cascade Layer 2 gated by window; self-offload floor Scope B framework only) — banked 2026-05-21 walkthrough Item 4
+- [x] Overnight Workload Window (weekday 23:00-07:00 ET; weekend deferred; Substrate Pressure Cascade gated by window; self-offload floor Scope B framework only) — banked 2026-05-21 walkthrough Item 4
+- [x] Bypass severity ladder thresholds (GPU thermal / Security / Spend burst ratified; OOM scoped to RAM; VRAM cascade exhaustion added; Power deferred) — banked 2026-05-21 walkthrough Item 5
+- [x] Substrate Pressure Cascade reframe (continuous intensity band 2.5 GB → 500 MiB free VRAM; three response kinds blend; stateless recalibration; checkpoint switchover) — banked 2026-05-21 walkthrough Item 5 (Item 4 refinement)
 - [ ] Quota cascade policy thresholds (20% / 10% under prepaid model) — partner-derived from operator constraint; explicit numeric ratification pending
-- [ ] Bypass severity ladder thresholds (Item 5 — pending)
 - [ ] Pro tier estimation (~250 msg/5h Pro Max vs ~50 msg/5h standard) (Item 6 — pending)
 - [ ] Promotion threshold N (default 10) (Item 7 — pending)
 - [ ] Cold-start rule (everything starts Tier 3) (Item 8 — pending)

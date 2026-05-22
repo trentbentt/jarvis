@@ -1,9 +1,9 @@
 # Jarvis Authority Spec (Decision 5 — Draft)
 
-**Date:** 2026-05-19
-**Status:** DRAFT — Decision 5 not yet closed
+**Date:** 2026-05-19 (draft); 2026-05-21 (Items 1-3 revise pass)
+**Status:** DRAFT — Decision 5 walkthrough Items 1-3 banked; Items 4-8 pending operator confirmation
 **Scope:** Jarvis + financial pipeline action surface (per Decision 6)
-**Operator confirmation required on:** action lists per tier, sleep window bounds, bypass severity ladder, Pro tier estimation
+**Operator confirmation required on:** quota cascade thresholds, sleep window bounds, bypass severity ladder, Pro tier estimation, promotion threshold (N), cold-start rule
 
 ---
 
@@ -29,7 +29,7 @@ Jarvis acts without asking, without surfacing. Standard telemetry only.
 - Compact state.json snapshots
 - Clear tmpfs caches owned by Jarvis
 - Reconnect a Tailscale node that flapped (`tailscale up` after detected disconnect)
-- Restart Jarvis writer thread if deadlock detected (defensive — should never fire under v0.2)
+- Restart Jarvis writer thread if deadlock detected (defensive — should never fire under v0.2; revisit on daemon version bump)
 - Prune Jarvis event ring buffer beyond retention
 - Garbage-collect stale `_tier_last_pid` entries for tiers no longer enabled
 
@@ -49,13 +49,31 @@ Jarvis acts and writes a `jarvis-q events` entry the operator can audit.
 
 | Trigger (listener · signal) | Action | Notes |
 |---|---|---|
-| process.py · tier crashed (PID gone, was active) | Restart tier via `inference-up <tier>` | Idempotent; tier_health confirms |
-| process.py · tier flapping (restart_count_24h ≥ 3) | Stop restart loop, demote to Tier 3 surface | Don't keep restarting broken things |
-| vram.py · burst-only T2 idle > N min | Stop T2 (free 6.8 GB) | N = 30 min default |
-| quota.py · DeepSeek V4 Flash spend > 80% monthly | Route subsequent batch calls to Haiku 4.5 | Reversible, free escalation |
-| quota.py · LiteLLM tier 1 walled (429) | Escalate to tier 2 provider per Decision 4 cascade | Reversible |
-| vram.py · OOM imminent (free < 500 MiB) | Pause lowest-priority active workload | Workload priority TBD |
+| process.py · T3/T4/T5 dataplane tier crashed (PID gone, was active) | `tmux kill-window inference:<window>` + `inference-up` idempotent guards | tier_health confirms post-restart |
+| process.py · T2/T6 burst tier crashed (PID gone, was active) | `t2-up` / `t6-up` (when T6 tooling ships) | tier_health confirms post-restart |
+| process.py · T1 crashed (PID gone, was active) | Escalate to Tier 3 — never silent restart | T1 is the Jarvis reasoning brain; the manager doesn't silently restart its own brain |
+| process.py · tier flapping (`restart_count_24h ≥ 3`) | Stop restart loop, demote action to Tier 3 surface | Don't keep restarting broken things |
+| vram.py · active burst tier (T2 or T6) idle > N min | Call tier down-script (`t2-down` / `t6-down`) | N = 30 min default; reclaims VRAM |
+| quota.py · LiteLLM tier-1 walled (429) | Escalate to tier-2 provider per Decision 4 cascade | Reversible; cross-provider behavior governed by Quota Cascade Policy below |
 | cron.py · git repo size > threshold | Schedule `git gc` for next idle window | Reversible |
+
+**Latency-band routing cascade (replaces VRAM-threshold framing for workload routing):**
+
+Each workload is assigned a class with two latency markers — *peak* (ideal target) and *minimum acceptable* (degradation floor). Jarvis monitors observed latency per class and responds along this cascade:
+
+- In-band → no action; current substrate continues serving.
+- Approaching minimum (within ~20% of min) → Jarvis considers substrate alternatives, does not yet act.
+- Below minimum → escalate per Decision 4 cascade: substrate re-allocation first, API as second lever within the workload's authorized budget.
+- Way below minimum (2× past min) → Tier 3 surface; operator decision needed.
+
+VRAM, CPU, and RAM thresholds are secondary diagnostics under this framing — used by Jarvis to predict and explain latency drift, not as standalone triggers. **Pause is not in the toolkit:** Jarvis re-routes work, never blocks it.
+
+**Initial workload class slots (framework only — peak/minimum values deferred to measurement data; Scope B):**
+
+- Interactive coding (OpenCode → T1)
+- Batch synthesis (news pipeline → T2 or cloud cascade)
+- Cron-scheduled jobs (daily/weekly → T3 / T4)
+- Real-time voice (Phase 18, future — flagged as needing its own class; values not defined in v19)
 
 ### Tier 3 — Surface-and-ask
 
@@ -75,10 +93,35 @@ Jarvis notifies, waits for explicit confirmation before acting.
 | Trigger | Action | Why Tier 3 |
 |---|---|---|
 | Pro walled during interactive session | Spin up T6 | VRAM impact, fan noise, real footprint |
-| quota.py · all cheap providers walled | Route to Anthropic API direct | Money-on-line discipline |
-| process.py · tier flapping (5+ in 24h) | Pause cron jobs that target tier | User-visible workflow change |
+| process.py · T1 crashed or unresponsive | Restart T1 with operator confirmation | Jarvis reasoning brain restart is high-impact; the manager doesn't restart its own brain silently |
+| Latency cascade failed (workload still ≥ 2× past min after substrate + API attempts exhausted) | Surface for operator decision | Jarvis ran out of autonomous moves |
+| process.py · tier flapping (5+ restarts in 24h) | Pause cron jobs that target the tier | User-visible workflow change |
 | Retire model from local storage | Delete HF cache entry | Irreversible (re-download cost) |
-| Any action in sleep window not meeting bypass | Hold and surface at 07:00 | Voice/notification policy |
+| Any action in sleep window not meeting bypass | Hold and surface at 07:00 | Voice / notification policy |
+
+Cross-provider quota cascade behavior — including the "all cheap providers walled" case — is governed by the Quota Cascade Policy below, not by a Tier 3 trigger row.
+
+---
+
+## Quota Cascade Policy (Prepaid Model)
+
+Each provider key in the Decision 4 cloud cascade carries a manually-loaded prepaid balance. Once a key's loaded balance is spent, that key is unavailable until the operator manually reloads it. There is no auto-recharge, overage billing, or monthly reset. Jarvis treats remaining balance as a hard floor, not a soft monthly target.
+
+This policy supersedes two earlier entries from the 5/19 draft: the "DeepSeek > 80% monthly spend" Tier 2 row and the "all cheap providers walled → Anthropic direct" Tier 3 row. Both are subsumed below.
+
+**Cascade behavior per provider:**
+
+| Remaining balance | Trigger | Tier | Action |
+|---|---|---|---|
+| ≥ 20% | normal operation | — | Continue serving from current provider |
+| < 20% (80% consumed) | listener signal | Tier 2 | Route subsequent calls to next-cheaper cascade rung; log in `jarvis-q events` |
+| < 10% (90% consumed) OR provider walled (429 / out-of-credit response) | listener signal | Tier 3 | Surface to operator. Do NOT auto-cascade further. Operator decides: reload current key, accept the cascade down to the next prepaid rung, or pause the workload. |
+
+**Why earlier Tier 3 escalation than a monthly-billing default would suggest:** under prepaid manual reload, 10% remaining is a small absolute runway. A single large synthesis call landing at 95% consumed can push the next listener sweep past 99%. Tier 3 at 90% consumed gives the operator-in-loop time to decide before the runway disappears.
+
+**Why no auto-cascade past Tier 3 to Anthropic API direct:** the cascade has finite depth under prepaid model. Pro walls but doesn't die; DeepSeek, Haiku, and Anthropic direct each have independent prepaid balances that exhaust independently. Unbounded auto-cascade worst case is "Pro walls, DeepSeek drains, Haiku drains, Anthropic direct drains" in a single bad day if a pipeline misbehaves. Operator-in-loop at each rung is the only thing between predictable cost and three prepaid balances burned overnight.
+
+**Pending explicit confirmation:** the 20% / 10% threshold values were derived during the 5/21 walkthrough in response to the operator's "once the budget is hit, it's hit" constraint. Operator did not explicitly confirm these specific numeric values before the walkthrough was interrupted by the Item 4 redirect. Values to be ratified or revised when Decision 5 closes (or as part of approving this revise commit).
 
 ---
 
@@ -171,11 +214,12 @@ The authority spec is implemented by the decision engine (Phase 3, not built). L
 
 Before closing Decision 5, operator confirms:
 
-- [ ] Tier 1 action list (no surprises)
-- [ ] Tier 2 action list (especially routing escalations and tier restart policy)
-- [ ] Tier 3 action list (especially money-on-line trigger conditions)
-- [ ] Sleep window bounds (23:00–07:00 ET assumed)
-- [ ] Bypass severity ladder thresholds
-- [ ] Pro tier estimation (~250 msg/5h Pro Max vs ~50 msg/5h standard)
-- [ ] Promotion threshold N (default 10)
-- [ ] Cold-start rule (everything starts Tier 3)
+- [x] Tier 1 action list (no surprises) — banked 2026-05-21 walkthrough Item 1
+- [x] Tier 2 action list (routing escalations, tier restart policy, latency-band cascade) — banked 2026-05-21 walkthrough Item 2
+- [x] Tier 3 action list (money-on-line, T1 restart, latency cascade failed) — banked 2026-05-21 walkthrough Item 3
+- [ ] Quota cascade policy thresholds (20% / 10% under prepaid model) — partner-derived from operator constraint; explicit numeric ratification pending
+- [ ] Sleep window bounds (Item 4 — pending)
+- [ ] Bypass severity ladder thresholds (Item 5 — pending)
+- [ ] Pro tier estimation (~250 msg/5h Pro Max vs ~50 msg/5h standard) (Item 6 — pending)
+- [ ] Promotion threshold N (default 10) (Item 7 — pending)
+- [ ] Cold-start rule (everything starts Tier 3) (Item 8 — pending)

@@ -128,8 +128,7 @@ The Jarvis-routed cascade is not a strict hierarchy. Providers organize by struc
 |---|---|---|
 | Workflow-tier-zero | Claude Pro (×2) | Operator default for building/design. Not Jarvis-routed; not in Quota Cascade. Pro tier estimation descoped (Item 6 — re-open condition: automated Pro-1 → Pro-2 → T6 failover is built). |
 | Peer rotation | DeepSeek V4 Flash, Kimi K2.6 | Active workhorse pair. Rotate between each other at threshold crosses; no strict precedence. |
-| Latency niche | Haiku 4.5 | Engaged for latency-sensitive light tasks only. Not in rotation. |
-| Emergency rung | Anthropic API direct | Tier 3 per-call invocation already (Decision 4 discipline). Not in rotation. |
+| Emergency rung | Anthropic API direct | Tier 3 per-call invocation already (Decision 4 discipline). Not in rotation. Vestigial as of 2026-05-24 — doctrine-forward, not yet wired (operator-confirmed). |
 
 ### Rotation Behavior (Peer Tier)
 
@@ -154,7 +153,7 @@ This is a **Tier 2 action with a notification overlay** — a local primitive of
 
 **Why rotation rather than strict hierarchy:** under prepaid manual reload, the peer keys exhaust independently. A strict hierarchy ("DeepSeek first, then Kimi") strands the Kimi balance while DeepSeek runs dry, then asks the operator to reload at exactly the moment the workhorse rung is empty. Rotation by fullest-peer keeps both keys productive across their full reload cycle and gives the operator-in-loop visibility at threshold crosses, not at exhaustion.
 
-**Why no auto-cascade past peer rotation to Haiku / Anthropic direct:** Haiku is engaged only for its latency niche by Decision 4. Anthropic API direct is Tier 3 per-call invocation already — every call goes through operator surface. Auto-cascading workloads from the peer tier into either is the wrong move; the peer tier's job is to absorb workloads until manually reloaded.
+**Why no auto-cascade past peer rotation to Anthropic direct:** Anthropic API direct is Tier 3 per-call invocation already — every call goes through operator surface. Auto-cascading workloads from the peer tier is the wrong move; the peer tier's job is to absorb workloads until manually reloaded. (Haiku 4.5 was originally specced as a latency niche class but deprecated 2026-05-24 — pricing parity with DeepSeek V4 Flash at lower capability.)
 
 **Why per-percent notification only in drain phase:** during rotation, no notification is needed — Jarvis is handling the situation autonomously and `jarvis-q events` shows rotations post-hoc. The per-percent alarm exists for the case where rotation can no longer help.
 

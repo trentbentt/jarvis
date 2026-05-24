@@ -64,10 +64,11 @@ The cascade is not a strict hierarchy. Providers organize into structural classe
 |---|---|---|
 | Workflow-tier-zero | Claude Pro (×2) | Operator default for building/design; not Jarvis-routed |
 | Peer rotation | DeepSeek V4 Flash, Kimi K2.6 | Active workhorse pair; rotate by fullest-peer rule (see Quota Cascade Policy in AUTHORITY_SPEC) |
-| Latency niche | Haiku 4.5 | Engaged for latency-sensitive light tasks only |
-| Emergency rung | Anthropic API direct | Tier 3 per-call invocation; not in rotation |
+| Emergency rung | Anthropic API direct | Tier 3 per-call invocation; not in rotation (vestigial — doctrine-forward, not yet wired) |
 
-The original "Provider priority" line (Claude Pro → DeepSeek V4 Flash → Kimi K2.6 → Haiku 4.5 → Anthropic API direct) remains as a tie-breaker when task class is genuinely ambiguous. It is not the default routing rule — class-by-task remains the default. The reframe makes explicit what Decision 4 implied but did not state: Pro is the operator's workflow surface, not a Jarvis-routed cascade rung. Quota Cascade Policy in AUTHORITY_SPEC governs cascade dynamics within and between classes.
+The original "Provider priority" line (Claude Pro → DeepSeek V4 Flash → Kimi K2.6 → ~~Haiku 4.5~~ → Anthropic API direct; Haiku deprecated 2026-05-24) remains as a tie-breaker when task class is genuinely ambiguous. It is not the default routing rule — class-by-task remains the default. The reframe makes explicit what Decision 4 implied but did not state: Pro is the operator's workflow surface, not a Jarvis-routed cascade rung. Quota Cascade Policy in AUTHORITY_SPEC governs cascade dynamics within and between classes.
+
+**Haiku 4.5 deprecation note (2026-05-24):** Originally specced as the latency niche class. Operator-confirmed deprecated: pricing parity with DeepSeek V4 Flash at lower capability makes Haiku redundant. Removed from cascade. Re-open condition: a future provider with a genuinely-distinct latency profile (substantially faster than DeepSeek peer round-trip) re-justifies a latency niche class.
 
 ---
 
@@ -105,7 +106,7 @@ Substrate Phase 1 listeners (vram.py, tier_health.py) ship telemetry; without an
 - The **Substrate Pressure Cascade** is a continuous intensity band (2.5 GB → 500 MiB free VRAM), not a sequential layer ladder. Stateless response — intensity recalibrates with current pressure, not past escalation state. Three response kinds (eviction, conditional self-offload, API routing) blend across the band.
 - The **promotion threshold N=12** is uniform across both rungs. An action's full path from cold-start to silent operation requires a minimum of 24 operator-acknowledged successful runs (12 at Tier 3 + 12 at Tier 2). The strict cold-start rule is the data-collection mechanism for the promotion threshold — without it, the threshold has no baseline. Operator framing for this rule: "human in the loop directing growth."
 - The **Quota Cascade Policy** is peer rotation, not strict hierarchy. DeepSeek V4 Flash and Kimi K2.6 are peers; the fullest-peer rule rotates active routing at 20% and 10% remaining. Drain phase engages when both peers are below 10% — work continues, with a per-percent notification overlay driving reload urgency.
-- The **Decision 4 cascade is reframed** into structural classes: workflow-tier-zero (Pro), peer rotation (DeepSeek / Kimi), latency niche (Haiku), emergency rung (Anthropic direct). See Decision 4's 2026-05-24 amendment above.
+- The **Decision 4 cascade is reframed** into structural classes: workflow-tier-zero (Pro), peer rotation (DeepSeek / Kimi), emergency rung (Anthropic direct). Haiku 4.5 was originally specced as a latency niche class; deprecated the same day. See Decision 4's 2026-05-24 amendment above.
 
 **New authority primitive introduced (Quota Cascade Policy):** Tier 2 action with a notification overlay. The routing action (rotate / drain) remains autonomous-with-log; the operator-facing notification rides on top without converting it to Tier 3. Local primitive of the Quota Cascade Policy; not elevated to a general AUTHORITY_SPEC primitive in this commit (re-open condition: a second action requires the same overlay shape).
 

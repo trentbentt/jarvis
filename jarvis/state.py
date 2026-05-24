@@ -222,8 +222,8 @@ class StateStore:
                 name="claude_pro_2", provider="anthropic",
                 period="weekly", status=QuotaStatus.OK,
             ),
-            "deepseek_v3": CloudQuota(
-                name="deepseek_v3", provider="deepseek",
+            "deepseek_v4_flash": CloudQuota(
+                name="deepseek_v4_flash", provider="deepseek",
                 period="monthly", budget_usd=20.0,
                 used_usd=0.0, status=QuotaStatus.OK,
             ),

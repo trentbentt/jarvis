@@ -109,7 +109,7 @@ v18 closed with the five-tier substrate live, the news pipeline ingesting, the b
 
 - **Path B dual-session topology adopted.** HANDOFF_v19 specifies a dual-session pattern (control session + worker session) as the v19 working topology. Captured in commit `f4a7835`. "Redesign over refine" principle (commit `38b6446`) — when a design surface is structurally wrong, the v19 cycle rebuilt it rather than patching. The Substrate Pressure Cascade reframe is the canonical example: v18's three-mode framing was workflow-correct but doctrine-wrong; v19 rebuilt the framing rather than patching it.
 
-- **Open audit items carried.** A3 (CLAUDE.md materially stale — Tier D backlog), A5 (state.json schema_version "0.1.0" — small mission), A6 (quota schema key `deepseek_v3` rename), A7 (v18 Hermes brainstorm document may not exist as a discrete artifact — Decision 2 prerequisite question), A10 (N=10 distinction surfaces in Item 7 ratification), A12 (SystemModel 9-domains vs 8 — cosmetic), A13 (HANDOFF intra-doc drift — Tier D). Plus B8/B10 (7-doc rubric as discipline, deserves its own ratification), B13 (session_start/checkpoint/wrap rituals).
+- **Open audit items carried.** A3 (CLAUDE.md materially stale — Tier D backlog), A5 (state.json schema_version "0.1.0" — small mission), A7 (v18 Hermes brainstorm document may not exist as a discrete artifact — Decision 2 prerequisite question), A10 (N=10 distinction surfaces in Item 7 ratification), A12 (SystemModel 9-domains vs 8 — cosmetic), A13 (HANDOFF intra-doc drift — Tier D). Plus B8/B10 (7-doc rubric as discipline, deserves its own ratification), B13 (session_start/checkpoint/wrap rituals).
 
 ---
 

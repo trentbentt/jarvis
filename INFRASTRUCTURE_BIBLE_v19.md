@@ -699,7 +699,7 @@ Two listeners running, fed into state.json every 10s:
 
 - Parses LiteLLM logs for spend per provider, token consumption, rate-limit proximity, cost-per-task.
 - **Logging path: Path A ratified 2026-05-24** (separate `litellm_logs` DB on existing postgres instance, `store_prompts_in_spend_logs=false`). quota.py queries postgres `spend_logs` via psycopg2/asyncpg using a dedicated `LITELLM_DB_URL` (separate from the news-pipeline `DATABASE_URL`). See PHASE2_SPEC §quota.py for the full ratification block and Claude Code implementation handoff.
-- Schema already has CloudQuota entries for `claude_pro_1`, `claude_pro_2`, `deepseek_v3` (was V3, needs rename to `deepseek_v4_flash`), `kimi_k2_6`. **Missing entries to add per Decision 4: `haiku_4_5`, `anthropic_api_direct`.**
+- `_build_initial_model()` in `jarvis/state.py` constructs CloudQuota entries for `claude_pro_1`, `claude_pro_2`, `deepseek_v4_flash`, `kimi_k2_6` (rename from `deepseek_v3` landed 2026-05-24; audit A6 closed). **Missing entries to add per Decision 4: `haiku_4_5`, `anthropic_api_direct`** — currently Tier D from cleanup commit 28933ac.
 - **Hard limitation:** Claude Pro doesn't expose quota via API. Pro usage walls are session-based and opaque. quota.py can only *estimate* Pro usage by counting requests/tokens sent. Estimate is "good enough to warn at 80% projected" but not authoritative.
 
 **cron.py (~2-3 hr, nice-to-have not load-bearing)**

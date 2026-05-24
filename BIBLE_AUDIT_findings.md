@@ -53,7 +53,7 @@ Tier D3 (CLAUDE.md update) is more urgent than bible portrayed.
 - The "v0.2 substrate" name refers to the StateStore implementation pattern, not the schema version. They are different things.
 - This is also why "schema migration not auto-handled" (small mission #4) matters — the schema_version field exists but no migration logic uses it.
 
-### A6. Quota schema key is `deepseek_v3`, not `deepseek_v4_flash`
+### A6. Quota schema key is `deepseek_v3`, not `deepseek_v4_flash` — ✅ RESOLVED 2026-05-24 (renamed in `jarvis/state.py::_build_initial_model()` lines 225-226)
 
 - Bible §13 noted this as "was V3, needs rename" but stated it as if it were a Phase 2 update item.
 - Actual state in `state.py` line 225-228: the schema dict literally has `"deepseek_v3"` as the key.
@@ -241,7 +241,7 @@ For the record, things the bible captured correctly per the full read:
 - Truth hierarchy ordering
 - 12 financial pipeline strategy questions
 - LiteLLM postgres logging is DISABLED (confirmed in PHASE2_SPEC)
-- 6 quota entries in schema (claude_pro_1, claude_pro_2, deepseek_v3, kimi_k2_6, haiku_4_5, anthropic_api_direct)
+- 6 quota entries in schema (claude_pro_1, claude_pro_2, deepseek_v4_flash, kimi_k2_6, haiku_4_5, anthropic_api_direct)
 - All small-mission entries (29 of them)
 
 The structural shape was correct; the specifics had drift.
@@ -293,10 +293,12 @@ I can produce a revised v2 of the bible incorporating all of the above, or you c
 - A1, A2, A4, A8, A9, A11 (see annotations above)
 - B1, B2, B3, B4, B6, B11, B14 (folded into bible — see annotations above)
 
+**Resolved 2026-05-24:**
+- A6 (deepseek_v3 → deepseek_v4_flash renamed in state.py::_build_initial_model())
+
 **Still open (carried forward to future sessions):**
 - A3 (CLAUDE.md materially stale — Tier D backlog)
 - A5 (state.json schema_version "0.1.0" — small mission #4)
-- A6 (quota schema key `deepseek_v3` — small-mission rename)
 - A7 (v18 Hermes brainstorm may not exist — Decision 2 prereq question)
 - A10 (N=10 distinction — Item 7 ratification surfaces this)
 - A12 (SystemModel 9 domains vs docstring 8 — cosmetic schema fix)

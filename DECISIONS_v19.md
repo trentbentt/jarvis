@@ -1,8 +1,8 @@
 # v19 Cardinal Decisions — Doctrine Close
 
-**Date:** 2026-05-19
-**Closes:** Decisions 1, 4, 6 (of 6)
-**Status:** Decisions 2, 3, 5 remain open
+**Date:** 2026-05-19 (initial close: Decisions 1, 4, 6); 2026-05-24 (Decision 5 close + Decision 4 small amendment)
+**Closes:** Decisions 1, 4, 5, 6 (of 6)
+**Status:** Decisions 2 and 3 remain open
 
 ---
 
@@ -56,6 +56,61 @@ Cowork. No longer a pipeline stage. Existing references in stack CONTEXT.md file
 
 **Status:** Closed 2026-05-19. Partially executed (news Stage 4 on DeepSeek V4 Flash; financial intensive on API).
 
+**2026-05-24 — Small Amendment: Structural Class Reframe**
+
+The cascade is not a strict hierarchy. Providers organize into structural classes:
+
+| Class | Providers | Role |
+|---|---|---|
+| Workflow-tier-zero | Claude Pro (×2) | Operator default for building/design; not Jarvis-routed |
+| Peer rotation | DeepSeek V4 Flash, Kimi K2.6 | Active workhorse pair; rotate by fullest-peer rule (see Quota Cascade Policy in AUTHORITY_SPEC) |
+| Latency niche | Haiku 4.5 | Engaged for latency-sensitive light tasks only |
+| Emergency rung | Anthropic API direct | Tier 3 per-call invocation; not in rotation |
+
+The original "Provider priority" line (Claude Pro → DeepSeek V4 Flash → Kimi K2.6 → Haiku 4.5 → Anthropic API direct) remains as a tie-breaker when task class is genuinely ambiguous. It is not the default routing rule — class-by-task remains the default. The reframe makes explicit what Decision 4 implied but did not state: Pro is the operator's workflow surface, not a Jarvis-routed cascade rung. Quota Cascade Policy in AUTHORITY_SPEC governs cascade dynamics within and between classes.
+
+---
+
+## Decision 5 — Jarvis Authority Model
+
+**Statement:**
+Jarvis acts within a three-tier authority framework (autonomous-immediate / autonomous-with-log / surface-and-ask), bounded by four Hard Constraints, with promotion governed by empirical thresholds rather than design-time judgment. Full doctrine in `AUTHORITY_SPEC_v19.md`.
+
+**Forcing function:**
+Substrate Phase 1 listeners (vram.py, tier_health.py) ship telemetry; without an authority model, every observed event has ambiguous response shape. The 94% → 66% VRAM rebalance creates real action-eligibility (substrate pressure can actually be acted on); the authority model defines who acts and under what supervision.
+
+**Walkthrough closure path:**
+
+| Item | Closed | Commit |
+|---|---|---|
+| 1 — Tier 1 autonomous-immediate list | 2026-05-22 | 50692bd |
+| 2 — Tier 2 autonomous-with-log list (per-tier-class restart; latency-band cascade) | 2026-05-22 | 50692bd |
+| 3 — Tier 3 surface-and-ask list (T1 restart; latency cascade failed; Quota Cascade Policy) | 2026-05-22 | 50692bd |
+| 4 — Overnight Workload Window + Hard Constraints | 2026-05-22 | 414d5b2 |
+| 5 — Bypass severity ladder + Substrate Pressure Cascade reframe (continuous intensity band) | 2026-05-22 | f0675da |
+| 6 — Pro tier estimation: **descoped** (Pro is workflow-tier-zero, not Jarvis-routed) | 2026-05-24 | *this commit* |
+| 7 — Promotion threshold: **N=12**, uniform across both rungs (Tier 3 → Tier 2 → Tier 1) | 2026-05-24 | *this commit* |
+| 8 — Cold-start rule: **all new actions begin at Tier 3**, no override at introduction; material behavior change re-enters at Tier 3 | 2026-05-24 | *this commit* |
+| Quota Cascade Policy: **20% / 10%** peer rotation thresholds; fullest-peer rotation mechanic; drain phase with per-percent notification overlay | 2026-05-24 | *this commit* |
+
+**Hard Constraints (load-bearing across all tiers):**
+
+1. Jarvis never shuts off.
+2. Jarvis identity never routes to API (workloads route, the coordinator does not).
+3. Pause is not in the toolkit (Jarvis re-routes work, never blocks it).
+4. T1 restart is Tier 3, never silent.
+
+**Key doctrine moves from the walkthrough:**
+
+- The **Substrate Pressure Cascade** is a continuous intensity band (2.5 GB → 500 MiB free VRAM), not a sequential layer ladder. Stateless response — intensity recalibrates with current pressure, not past escalation state. Three response kinds (eviction, conditional self-offload, API routing) blend across the band.
+- The **promotion threshold N=12** is uniform across both rungs. An action's full path from cold-start to silent operation requires a minimum of 24 operator-acknowledged successful runs (12 at Tier 3 + 12 at Tier 2). The strict cold-start rule is the data-collection mechanism for the promotion threshold — without it, the threshold has no baseline. Operator framing for this rule: "human in the loop directing growth."
+- The **Quota Cascade Policy** is peer rotation, not strict hierarchy. DeepSeek V4 Flash and Kimi K2.6 are peers; the fullest-peer rule rotates active routing at 20% and 10% remaining. Drain phase engages when both peers are below 10% — work continues, with a per-percent notification overlay driving reload urgency.
+- The **Decision 4 cascade is reframed** into structural classes: workflow-tier-zero (Pro), peer rotation (DeepSeek / Kimi), latency niche (Haiku), emergency rung (Anthropic direct). See Decision 4's 2026-05-24 amendment above.
+
+**New authority primitive introduced (Quota Cascade Policy):** Tier 2 action with a notification overlay. The routing action (rotate / drain) remains autonomous-with-log; the operator-facing notification rides on top without converting it to Tier 3. Local primitive of the Quota Cascade Policy; not elevated to a general AUTHORITY_SPEC primitive in this commit (re-open condition: a second action requires the same overlay shape).
+
+**Status:** Closed 2026-05-24. Full spec ratified; Phase 2 listener implementation (`process.py`, `quota.py`, `cron.py`) is downstream work, not blocked on further doctrine.
+
 ---
 
 ## Decision 6 — v19 Scope
@@ -88,9 +143,8 @@ Two subsystems receive full phase-level treatment in v19. Two are reduced in sco
 
 ## What Remains Open
 
-- **Decision 2 — Hermes adoption shape.** Pattern B parallel to n8n, Curator scope narrow or off, memory writes disabled, routed via DeepSeek V4 Flash initially. Needs its own session.
-- **Decision 3 — T6 operational defaults.** Qwen3.6-35B-A3B UD-Q4_K_XL, ~25% expert offload, 64K context, three named modes (comfort / conservative / aggressive). Blocked on 21 GB model download + spin-up tooling. Requires rebalance to land first.
-- **Decision 5 — Jarvis authority levels.** Three tiers (autonomous-immediate / autonomous-with-log / surface-and-ask), sleeping-window voice rules. Substrate ready (v0.2). Needs its own session.
+- **Decision 2 — Hermes adoption shape.** Pattern B parallel to n8n, Curator scope narrow or off, memory writes disabled, routed via DeepSeek V4 Flash initially. Blocked on v18 Hermes brainstorm docs being surfaced (bible audit §A7 flags these may not exist as discrete artifacts; reconstruct-from-scratch may be required).
+- **Decision 3 — T6 operational defaults.** Qwen3.6-35B-A3B UD-Q4_K_XL, ~25% expert offload, 64K context, three named modes (comfort / conservative / aggressive). Blocked on 21 GB model download + spin-up tooling. Requires Rebalance Change 2 measurement to land first.
 
 ## Note on Rebalance Headroom
 

@@ -1,9 +1,9 @@
-# Jarvis Authority Spec (Decision 5 — Draft)
+# Jarvis Authority Spec (Decision 5)
 
-**Date:** 2026-05-19 (draft); 2026-05-21 (Items 1-5 revise passes)
-**Status:** DRAFT — Decision 5 walkthrough Items 1-5 banked; Items 6-8 pending operator confirmation
+**Date:** 2026-05-19 (draft); 2026-05-21 (Items 1-5 revise passes); 2026-05-24 (Items 6-8 + Quota Cascade closure)
+**Status:** RATIFIED — Decision 5 walkthrough complete; all eight items + Quota Cascade Policy banked
 **Scope:** Jarvis + financial pipeline action surface (per Decision 6)
-**Operator confirmation required on:** quota cascade thresholds, bypass severity ladder thresholds, Pro tier estimation, promotion threshold (N), cold-start rule
+**Operator confirmation:** complete (Items 1-5 banked across commits 50692bd / 414d5b2 / f0675da; Items 6-8 + Quota Cascade Policy banked in this commit)
 
 ---
 
@@ -29,7 +29,7 @@ Jarvis acts without asking, without surfacing. Standard telemetry only.
 **Criteria for inclusion:**
 
 - Reversible
-- Has run successfully ≥ 10 times without correction
+- Has run successfully ≥ 12 times without correction (promotion threshold N=12 — Item 7)
 - Does not change user-visible state
 - Costs no money
 - Burns < 100 MiB VRAM
@@ -114,25 +114,51 @@ Cross-provider quota cascade behavior — including the "all cheap providers wal
 
 ---
 
-## Quota Cascade Policy (Prepaid Model)
+## Quota Cascade Policy (Prepaid Model — Ratified 2026-05-24)
 
 Each provider key in the Decision 4 cloud cascade carries a manually-loaded prepaid balance. Once a key's loaded balance is spent, that key is unavailable until the operator manually reloads it. There is no auto-recharge, overage billing, or monthly reset. Jarvis treats remaining balance as a hard floor, not a soft monthly target.
 
 This policy supersedes two earlier entries from the 5/19 draft: the "DeepSeek > 80% monthly spend" Tier 2 row and the "all cheap providers walled → Anthropic direct" Tier 3 row. Both are subsumed below.
 
-**Cascade behavior per provider:**
+### Provider Classes (Decision 4 reframe — see DECISIONS_v19.md 2026-05-24 amendment)
 
-| Remaining balance | Trigger | Tier | Action |
+The Jarvis-routed cascade is not a strict hierarchy. Providers organize by structural class:
+
+| Class | Providers | Cascade role |
+|---|---|---|
+| Workflow-tier-zero | Claude Pro (×2) | Operator default for building/design. Not Jarvis-routed; not in Quota Cascade. Pro tier estimation descoped (Item 6 — re-open condition: automated Pro-1 → Pro-2 → T6 failover is built). |
+| Peer rotation | DeepSeek V4 Flash, Kimi K2.6 | Active workhorse pair. Rotate between each other at threshold crosses; no strict precedence. |
+| Latency niche | Haiku 4.5 | Engaged for latency-sensitive light tasks only. Not in rotation. |
+| Emergency rung | Anthropic API direct | Tier 3 per-call invocation already (Decision 4 discipline). Not in rotation. |
+
+### Rotation Behavior (Peer Tier)
+
+| Remaining balance on active peer | Trigger | Tier | Action |
 |---|---|---|---|
-| ≥ 20% | normal operation | — | Continue serving from current provider |
-| < 20% (80% consumed) | listener signal | Tier 2 | Route subsequent calls to next-cheaper cascade rung; log in `jarvis-q events` |
-| < 10% (90% consumed) OR provider walled (429 / out-of-credit response) | listener signal | Tier 3 | Surface to operator. Do NOT auto-cascade further. Operator decides: reload current key, accept the cascade down to the next prepaid rung, or pause the workload. |
+| ≥ 20% | normal operation | — | Continue serving from active peer |
+| < 20% (80% consumed) | listener signal | Tier 2 | **Rotate** active routing to the peer with more remaining balance. Logged event; no operator surface. |
+| < 10% (90% consumed) | listener signal | Tier 2 | **Rotate again** — flip to whichever peer is fuller at the moment of rotation. Logged event; no operator surface. |
+| Both peers < 10% | drain phase entered | Tier 2 + notification overlay | Continue serving from active peer until it hits 0%; switch to other peer and drain to 0%. Goal: maximize prepaid value rather than strand balance. |
 
-**Why earlier Tier 3 escalation than a monthly-billing default would suggest:** under prepaid manual reload, 10% remaining is a small absolute runway. A single large synthesis call landing at 95% consumed can push the next listener sweep past 99%. Tier 3 at 90% consumed gives the operator-in-loop time to decide before the runway disappears.
+**Rotation mechanic.** At every threshold cross on the active peer, Jarvis selects the peer with more remaining balance as the new active provider. This is a "fullest-peer wins" rule rather than strict alternation — handles the case where one peer was reloaded more recently than the other, or where one peer is burning faster.
 
-**Why no auto-cascade past Tier 3 to Anthropic API direct:** the cascade has finite depth under prepaid model. Pro walls but doesn't die; DeepSeek, Haiku, and Anthropic direct each have independent prepaid balances that exhaust independently. Unbounded auto-cascade worst case is "Pro walls, DeepSeek drains, Haiku drains, Anthropic direct drains" in a single bad day if a pipeline misbehaves. Operator-in-loop at each rung is the only thing between predictable cost and three prepaid balances burned overnight.
+**Drain phase.** Once both peers are below the 10% threshold, no further rotation target exists. Jarvis drains the active key to zero, switches to the other peer, and drains it to zero. Work continues end-to-end; the policy's goal is to maximize prepaid value rather than strand budget. Stopping work to avoid spending balance is itself a cost — pause is not in the toolkit (Hard Constraints).
 
-**Pending explicit confirmation:** the 20% / 10% threshold values were derived during the 5/21 walkthrough in response to the operator's "once the budget is hit, it's hit" constraint. Operator did not explicitly confirm these specific numeric values before the walkthrough was interrupted by the Item 4 redirect. Values to be ratified or revised when Decision 5 closes (or as part of approving this revise commit).
+### Per-Percent Notification Overlay (Drain Phase Only)
+
+During drain phase only, every whole-percent drop on the active key fires an operator notification. Continuous-cadence reload reminder; channel obeys Overnight Workload Window unless severity ladder bypass applies. Work does not stop.
+
+This is a **Tier 2 action with a notification overlay** — a local primitive of the Quota Cascade Policy. The routing action (rotate / drain) remains autonomous-with-log; the operator-facing notification rides on top without converting it to Tier 3. The overlay does not engage during normal rotation (when a rotation target exists) — only when the safety measures are at their end and operator action is the only path back to full capacity.
+
+### Why This Shape
+
+**Why rotation rather than strict hierarchy:** under prepaid manual reload, the peer keys exhaust independently. A strict hierarchy ("DeepSeek first, then Kimi") strands the Kimi balance while DeepSeek runs dry, then asks the operator to reload at exactly the moment the workhorse rung is empty. Rotation by fullest-peer keeps both keys productive across their full reload cycle and gives the operator-in-loop visibility at threshold crosses, not at exhaustion.
+
+**Why no auto-cascade past peer rotation to Haiku / Anthropic direct:** Haiku is engaged only for its latency niche by Decision 4. Anthropic API direct is Tier 3 per-call invocation already — every call goes through operator surface. Auto-cascading workloads from the peer tier into either is the wrong move; the peer tier's job is to absorb workloads until manually reloaded.
+
+**Why per-percent notification only in drain phase:** during rotation, no notification is needed — Jarvis is handling the situation autonomously and `jarvis-q events` shows rotations post-hoc. The per-percent alarm exists for the case where rotation can no longer help.
+
+**Re-open condition for Pro descope (Item 6):** an automated Pro-1 → Pro-2 → T6 failover mechanism is built that allows Jarvis to dispatch interactive workloads across Pro accounts and to T6 without operator-in-loop. Until then, Pro is workflow-tier-zero (operator-driven), not a Jarvis-routed cascade rung.
 
 ---
 
@@ -235,9 +261,13 @@ Actions are not static. Promotion and demotion follow operator behavior.
 
 **Promotion (Tier 3 → 2 → 1):**
 
-- An action fired with explicit confirmation N times (default 10) without correction is eligible for promotion
-- Promotion is **proposed by Jarvis**, not automatic — surfaces as a Tier 3 ask: "I've done X 10 times without correction; promote to Tier 2?"
-- Operator approves via reply (CLI: `jarvis-q authority promote <action_id>` — future tooling)
+- Promotion threshold: **N=12**, uniform across both rungs (Item 7, ratified 2026-05-24).
+- An action that has fired N=12 times at its current tier without operator correction is eligible for promotion one tier.
+- Tier 3 → Tier 2: action has surfaced 12 times with operator confirmation and zero corrections. Tier 2 → Tier 1: action has logged 12 times at Tier 2 with zero corrections.
+- Promotion is **proposed by Jarvis**, not automatic — surfaces as a Tier 3 ask: "I've done X 12 times without correction; promote one tier?"
+- Success criterion is "no operator correction," not "no crash." A technically-successful run that the operator later flagged as wrong does not count toward the threshold.
+- Operator approves via reply (CLI: `jarvis-q authority promote <action_id>` — future tooling).
+- An action's full path from cold-start to silent operation requires a minimum of 24 operator-acknowledged successful runs (12 at Tier 3 + 12 at Tier 2).
 
 **Demotion (immediate, no threshold):**
 
@@ -245,10 +275,12 @@ Actions are not static. Promotion and demotion follow operator behavior.
 - CLI: `jarvis-q authority demote <action_id>` — future tooling
 - Demotion is logged with reason if provided
 
-**Cold-start rule:**
+**Cold-start rule (Item 8, ratified 2026-05-24):**
 
-- All new actions begin in Tier 3
-- No action ships in Tier 1 or Tier 2 without operator opt-in at spec time
+- All new actions begin in Tier 3. **No override at introduction** — this rule is strict; design-time judgment does not substitute for runtime measurement.
+- An action's tier is determined empirically by N=12 successful surfaces without correction, not by design-time classification.
+- **Material behavior change to an existing action re-enters at Tier 3.** A behavioral change to a Tier 1 or Tier 2 action is treated as a new action for cold-start purposes; the changed version must re-prove itself through the promotion path.
+- Rationale: the cold-start rule is the data-collection mechanism for the promotion threshold. Without strict cold-start, the threshold has no baseline. The operator's review of those first surfaces is what directs Jarvis's growth.
 
 ---
 
@@ -278,7 +310,7 @@ The authority spec is implemented by the decision engine (Phase 3, not built). L
 
 ## Operator Confirmation Checklist
 
-Before closing Decision 5, operator confirms:
+Decision 5 closure status:
 
 - [x] Tier 1 action list (no surprises) — banked 2026-05-21 walkthrough Item 1
 - [x] Tier 2 action list (routing escalations, tier restart policy, latency-band cascade) — banked 2026-05-21 walkthrough Item 2
@@ -286,7 +318,9 @@ Before closing Decision 5, operator confirms:
 - [x] Overnight Workload Window (weekday 23:00-07:00 ET; weekend deferred; Substrate Pressure Cascade gated by window; self-offload floor Scope B framework only) — banked 2026-05-21 walkthrough Item 4
 - [x] Bypass severity ladder thresholds (GPU thermal / Security / Spend burst ratified; OOM scoped to RAM; VRAM cascade exhaustion added; Power deferred) — banked 2026-05-21 walkthrough Item 5
 - [x] Substrate Pressure Cascade reframe (continuous intensity band 2.5 GB → 500 MiB free VRAM; three response kinds blend; stateless recalibration; checkpoint switchover) — banked 2026-05-21 walkthrough Item 5 (Item 4 refinement)
-- [ ] Quota cascade policy thresholds (20% / 10% under prepaid model) — partner-derived from operator constraint; explicit numeric ratification pending
-- [ ] Pro tier estimation (~250 msg/5h Pro Max vs ~50 msg/5h standard) (Item 6 — pending)
-- [ ] Promotion threshold N (default 10) (Item 7 — pending)
-- [ ] Cold-start rule (everything starts Tier 3) (Item 8 — pending)
+- [x] Quota Cascade Policy (20% / 10% peer rotation thresholds under prepaid model; fullest-peer rotation mechanic; drain phase with per-percent notification overlay) — banked 2026-05-24
+- [x] Pro tier estimation **descoped** (Item 6 — Pro is workflow-tier-zero, not Jarvis-routed; re-open on automated Pro/T6 failover) — banked 2026-05-24
+- [x] Promotion threshold **N=12**, uniform across both rungs (Item 7) — banked 2026-05-24
+- [x] Cold-start rule: all new actions begin at Tier 3, no override at introduction, material behavior change re-enters at Tier 3 (Item 8) — banked 2026-05-24
+
+**Decision 5 closed.**

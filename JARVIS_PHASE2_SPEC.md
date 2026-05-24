@@ -81,7 +81,16 @@ self._restart_history: dict[str, list[datetime]]  # tier_id → timestamps
 
 **Schema gap CLOSED 2026-05-19:**
 
-Two CloudQuota entries added to `_build_initial_model()` to match Decision 4's 5-tier routing chain:
+~~Two CloudQuota entries added to `_build_initial_model()` to match Decision 4's 5-tier routing chain:~~
+
+**Section DEPRECATED 2026-05-24.** Original instructions specified adding `haiku_4_5` and `anthropic_api_direct` CloudQuota entries. Both are stale:
+
+- **Haiku 4.5 deprecated** (DECISIONS_v19.md 2026-05-24 amendment): pricing parity with DeepSeek V4 Flash at lower capability; removed from cascade entirely. Do not add a `haiku_4_5` entry.
+- **Anthropic API direct vestigial** (DECISIONS_v19.md 2026-05-24 amendment): emergency rung is doctrine-forward but not yet wired (operator-confirmed). Add `anthropic_api_direct` only when operational need materializes, not preemptively.
+
+**Schema.py reality check (2026-05-24):** the file defines the `CloudQuota` Pydantic class but no provider name rows are hardcoded there. Provider rows live elsewhere — `_build_initial_model()` location TBD (see HANDOFF follow-up #2). The code block below shows the *original instructed shape* — preserved for historical reference, NOT to be executed as written. Wider sweep of "5-tier" / "haiku" / cascade-hierarchy references elsewhere in this spec is queued as HANDOFF follow-up #3.
+
+Original instruction (historical, do not execute):
 
 ```
 "haiku_4_5": CloudQuota(
@@ -214,7 +223,7 @@ Maintain a per-job VRAM cost map: `{"news-synth": 6800, "financial-classify": 42
 
 1. **process.py** — 2-3 hr active work. Reuses vram.py patterns, smallest scope, immediate decision-engine value (tier restart detection drives Decision 5 Tier 2 actions). **Not blocked by any prereq.**
 2. **LiteLLM logging path decision** — 30 min. Read v11 rationale for `database_url` disable, then pick Path A (separate DB) or Path B (JSON file logs). Path A adds ~15 min one-time setup. Required before quota.py.
-3. **quota.py** — 3-4 hr active work. Schema gap fix already landed (May 19 — 6 quotas in place). Implementation gated on step 2.
+3. **quota.py** — 3-4 hr active work. Implementation gated on step 2 + provider rows located/renamed (HANDOFF follow-up #2). (Earlier "schema gap fix already landed (May 19 — 6 quotas in place)" claim was found incorrect 2026-05-24: schema.py has the `CloudQuota` class but no provider rows hardcoded there.)
 4. **cron.py** — 2-3 hr active work. Last because observability-only.
 
 Total Phase 2: ~8 hours active work + ~30 min LiteLLM prereq, plus soak verification between each listener.

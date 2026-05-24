@@ -1,4 +1,4 @@
-# Jarvis & v19 Handoff — 2026-05-19
+# Jarvis & v19 Handoff — 2026-05-24
 
 ## What Jarvis Is (Architectural Framing)
 
@@ -89,7 +89,7 @@ This section is the seed of that vision, captured before drift loses it.
 
 ## Where We Are
 
-Mid-transition from master_summary_v18 → v19. Building Jarvis (system manager + observability layer) as the foundation before locking v19 doctrine.
+v19 doctrine: **4 of 6 cardinals closed** (Decisions 1, 4, 5, 6). Decisions 2 (Hermes) and 3 (T6) remain open — each prerequisite-blocked, not stuck on a walkthrough. Jarvis substrate Phase 1 (vram.py, tier_health.py) live; Phase 2 listeners (process.py, quota.py, cron.py) specced, unbuilt. Path B dual-session topology live since 2026-05-21. Standard mode baseline at 66% per Rebalance Change 1 (Change 2 patched, measurement pending next natural T1 restart). Authority model (Decision 5) ratified 2026-05-24 — three-tier autonomous-immediate / autonomous-with-log / surface-and-ask, N=12 promotion threshold, strict cold-start, Quota Cascade Policy with fullest-peer rotation. See `Session 2026-05-24` section below for the closure details.
 
 ## Hard Facts on Disk
 
@@ -129,10 +129,10 @@ These collectively unlock v19. Most are not yet formally written down.
 | # | Decision | State |
 |---|----------|-------|
 | 1 | Architectural reframe: local = data plumbing + agentic glue + on-demand coder burst. Cloud = synthesis + building + frontier reasoning. | CLOSED 2026-05-19 — see DECISIONS_v19.md |
-| 2 | Hermes Pattern B adoption (parallel to n8n, Curator narrow-scope, memory disabled, routed cloud initially) | OPEN |
+| 2 | Hermes Pattern B adoption (parallel to n8n, Curator narrow-scope, memory disabled, routed cloud initially) | OPEN — blocked on v18 Hermes brainstorm docs (audit §A7 flags these may not exist as discrete artifacts) |
 | 3 | T6 defaults: Qwen3.6-35B-A3B UD-Q4_K_XL, 25% expert offload, 64K context | OPEN; model not downloaded |
-| 4 | Cloud routing chain: Pro → DeepSeek V4 Flash → Kimi K2.6 → Haiku → Anthropic direct. Cowork retired. | CLOSED 2026-05-19 — see DECISIONS_v19.md |
-| 5 | Jarvis authority levels (immediate / with-log / surface-and-ask) | OPEN |
+| 4 | Cascade restructured into structural classes: workflow-tier-zero (Pro) / peer rotation (DeepSeek V4 Flash ↔ Kimi K2.6) / emergency rung (Anthropic direct, vestigial). Cowork retired. | CLOSED 2026-05-19; amended 2026-05-24 (class reframe + Haiku 4.5 deprecation) — see DECISIONS_v19.md |
+| 5 | Jarvis authority levels (immediate / with-log / surface-and-ask). N=12 uniform promotion threshold, strict cold-start (no override at introduction; material behavior change re-enters Tier 3), Quota Cascade Policy. | CLOSED 2026-05-24 — see DECISIONS_v19.md, AUTHORITY_SPEC_v19.md |
 | 6 | v19 scope: Jarvis + Financial = phase-level; Nexus = design only; 2nd Brain = deferred | CLOSED 2026-05-19 — see DECISIONS_v19.md |
 
 Operator preferences expressed in v18 thread:
@@ -280,12 +280,46 @@ Operator runs three Claude accounts on parallel missions. Documentation may be a
 
 ## Recommended Next Move for New Chat
 
-The new chat should NOT re-litigate cardinals 1-6 by speculation. It should:
+The new chat should NOT re-litigate closed cardinals. It should:
 1. Run `jarvis-q all` to see live state
 2. Read this handoff + Jarvis CLAUDE.md + news-pipeline CONTEXT.md
-3. Ask operator which cardinal decision to formally close first
+3. Read the `Session 2026-05-24` section below for the three open follow-ups (C2 spec-surface; provider-name-row location + rename; doc-cleanup)
 
-The 94% baseline is the data; cardinals 1 + 4 are the lowest-friction wins (already partially executed in practice).
+Decisions 2 and 3 are the remaining open cardinals but both are prerequisite-blocked (Hermes brainstorm docs may not exist; T6 model not downloaded). The forward-momentum path is the three small follow-ups, then `process.py` (no prereqs, ~2-3 hr Claude Code mission), then `quota.py` (~3-4 hr after the follow-ups land).
+
+## Session 2026-05-24 — Decision 5 Close + Decision 4 Amendments
+
+**Doctrine ratified this session:**
+
+- **Decision 5 closed.** Items 6/7/8 + Quota Cascade Policy banked. Strict cold-start (all new actions begin Tier 3, no override at introduction; material behavior change to an existing action re-enters Tier 3). N=12 uniform promotion threshold across both rungs — minimum 24 operator-acknowledged successful runs from cold-start to silent operation (12 at Tier 3 + 12 at Tier 2). Pro tier estimation descoped (Pro is workflow-tier-zero, not Jarvis-routed; re-open condition: automated Pro-1 → Pro-2 → T6 failover is built). Quota Cascade Policy with fullest-peer rotation between DeepSeek V4 Flash ↔ Kimi K2.6 at 20% / 10% remaining + drain phase per-percent notification overlay.
+- **Decision 4 amended (v1):** cascade restructured into structural classes. Workflow-tier-zero (Pro, operator-driven) / peer rotation (DeepSeek / Kimi) / latency niche (Haiku) / emergency rung (Anthropic direct).
+- **Decision 4 amended (v2):** Haiku 4.5 deprecated same day. Pricing parity with DeepSeek V4 Flash at lower capability makes it redundant. Latency niche class removed; operational cascade is now three classes. Re-open condition: a future provider with a genuinely-distinct latency profile re-justifies a latency niche class.
+
+**Operational reality of the cloud cascade as of 2026-05-24:**
+
+| Class | Providers | Wired? |
+|---|---|---|
+| Workflow-tier-zero | Claude Pro ×2 | N/A (operator-driven, not Jarvis-routed) |
+| Peer rotation | DeepSeek V4 Flash, Kimi K2.6 | ✅ Wired |
+| Emergency rung | Anthropic API direct | ⏳ Vestigial — doctrine-forward, not yet wired |
+
+**Schema reality check (audit residue, not patched here):** `~/projects/jarvis/jarvis/schema.py` defines the `CloudQuota` Pydantic class but no provider name rows are hardcoded in `schema.py`. Bible §13.2 conflated the class definition with row data and is stale on this. Provider name rows live elsewhere (config / env / DB seed — to be located). The `deepseek_v3 → deepseek_v4_flash` rename happens wherever those rows actually live.
+
+**New authority primitive introduced (scoped to Quota Cascade Policy):** Tier 2 action with a notification overlay. Routing action stays autonomous-with-log; operator-facing notification rides on top without converting to Tier 3. Not elevated to general AUTHORITY_SPEC primitive in this commit (re-open condition: a second action requires the same overlay shape).
+
+**Three open follow-ups for next session:**
+
+1. **C2 spec-surface (~5 min).** Surface audit §C's "LiteLLM postgres logging is DISABLED (confirmed in PHASE2_SPEC)" finding into `JARVIS_PHASE2_SPEC.md` §quota.py section. Unblocks `quota.py` build at the doctrine level. (Originally budgeted ~30 min for verification on monarch; audit already did the verification work.)
+2. **Provider-name-row location + rename (~15 min).** Locate where `deepseek_v3`, `kimi_k2_6`, `claude_pro_1`, `claude_pro_2` are actually defined (likely LiteLLM config, env, or a separate config module). Do the `deepseek_v3 → deepseek_v4_flash` rename in-place. Add bible §13.2 correction noting schema.py defines the class but not the row data.
+3. **Doc-cleanup small commit (~10 min).** DECISIONS_v19.md "Note on Rebalance Headroom" projects ~14-15 GB / 60% baseline; actual is 16.5 GB / 66% per bible §11.1 — stale. "What's Now Unblocked" treats Standard mode rebalance as future work; Change 1 executed, Change 2 patched. HANDOFF Standard Mode Rebalance section's "Result: baseline ~14-15 GB / 60%" line in the proposed bullet list should be annotated as a pre-execution projection (actual is 16.5 GB / 66%).
+
+After (1) and (2) land, `quota.py` is unblocked at doctrine + schema-name level. `process.py` is buildable today regardless (no further prereqs). Authority model is doctrine-complete — listener implementation work can begin whenever Claude Code picks it up.
+
+**Carried open items unchanged from prior sessions:**
+
+- A1 — Rebalance Change 2 measurement (T1 ctx 36K → 24K patched, awaits next natural T1 restart).
+- B1 / B-D2 — Decision 2 (Hermes), blocked on missing v18 brainstorm docs.
+- B2 / B-D3 — Decision 3 (T6 defaults), blocked on 21 GB model download + `~/bin/t6-up` / `~/bin/t6-down` tooling + A1 measurement.
 
 ---
 

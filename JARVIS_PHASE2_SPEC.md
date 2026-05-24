@@ -132,9 +132,21 @@ Three viable paths, ordered by preference:
 - **Path B: Enable JSON file logging.** Add `json_logs: true` to config.yaml, tail `~/litellm/logs/*.jsonl`. No DB risk, messier parsing, structured-enough to be reliable. Lower setup cost than Path A but quota.py code is more complex.
 - **Path C: Defer.** Build process.py and cron.py first; revisit quota.py logging path after Decision 5 is closer to lock so the logging effort is scoped against actual authority spec needs.
 
-**Recommendation:** Path A. The isolation concern is solvable with a separate DB, and structured query is meaningfully cleaner than tail-and-parse for quota gating decisions.
+**RATIFIED 2026-05-24: Path A** — separate `litellm_logs` DB on the existing postgres instance, `store_prompts_in_spend_logs=false` (cost/token metadata only — no prompt content stored).
 
-**Path A spec (when chosen):**
+Rationale recovered from v19 architectural context (v11 audit detail not preserved verbatim): the news-pipeline postgres backs news data + n8n + `validation_telemetry` + `lora_swap_telemetry`, all with explicit per-table operator-managed schema discipline. LiteLLM's auto-migration of ~12-15 `LiteLLM_*` tables on startup would pollute this clean schema, complicate backups, and create operational coupling. Separate DB on the same instance preserves isolation while still enabling structured `spend_logs` queries from quota.py.
+
+`store_prompts_in_spend_logs=false` chosen because cost tracking needs only metadata (provider, model, tokens, timestamp, cost) — prompt content adds a privacy/liability surface (especially against NDA-tagged work via Anthropic direct) for no gain in the cost-tracking use case. Reversible if a future need surfaces; un-collecting prompts is not.
+
+**Implementation specifics deferred to Claude Code build-time** (against monarch postgres state):
+- Postgres role (new dedicated `litellm_user` vs. reuse existing); recommended new role for clean isolation.
+- Connection-string mechanics (`LITELLM_DB_URL` in `~/.config/inference/api_keys.env` is the established pattern, separate from the shared `DATABASE_URL`).
+- LiteLLM config edits: uncomment `database_url`, add `store_prompts_in_spend_logs: false` under `general_settings`.
+- One-time `CREATE DATABASE litellm_logs OWNER <role>;` migration.
+
+Paths B (JSON file logs) and C (defer) are formally ruled out by this ratification.
+
+**Path A spec (ratified 2026-05-24 — Claude Code implementation reference):**
 
 ```
 SELECT model, SUM(spend), SUM(prompt_tokens), SUM(completion_tokens),
@@ -222,11 +234,11 @@ Maintain a per-job VRAM cost map: `{"news-synth": 6800, "financial-classify": 42
 ## Build Order
 
 1. **process.py** — 2-3 hr active work. Reuses vram.py patterns, smallest scope, immediate decision-engine value (tier restart detection drives Decision 5 Tier 2 actions). **Not blocked by any prereq.**
-2. **LiteLLM logging path decision** — 30 min. Read v11 rationale for `database_url` disable, then pick Path A (separate DB) or Path B (JSON file logs). Path A adds ~15 min one-time setup. Required before quota.py.
+2. **LiteLLM logging path** — CLOSED 2026-05-24 (Path A ratified, `store_prompts_in_spend_logs=false`). Implementation specifics (postgres role creation, connection wiring, LiteLLM config edits) absorbed into quota.py task — Claude Code handles against monarch state.
 3. **quota.py** — 3-4 hr active work. Implementation gated on step 2 + provider rows located/renamed (HANDOFF follow-up #2). (Earlier "schema gap fix already landed (May 19 — 6 quotas in place)" claim was found incorrect 2026-05-24: schema.py has the `CloudQuota` class but no provider rows hardcoded there.)
 4. **cron.py** — 2-3 hr active work. Last because observability-only.
 
-Total Phase 2: ~8 hours active work + ~30 min LiteLLM prereq, plus soak verification between each listener.
+Total Phase 2: ~8 hours active work (LiteLLM logging-path prereq closed 2026-05-24 — Path A wiring absorbed into quota.py task), plus soak verification between each listener.
 
 ## Soak Discipline (v0.1 lesson)
 

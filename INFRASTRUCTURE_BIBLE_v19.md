@@ -284,15 +284,21 @@ Bible v19 initial compile listed only 4100/4200; n8n and postgres are equally tr
 
 LiteLLM is the router. It exposes a single OpenAI-compatible endpoint that pipelines and agent harnesses call; the routing logic decides which tier or cloud provider actually handles the request, including cascading fallbacks when a target is unavailable, walled, or rate-limited.
 
-### §6.1 Cloud cascade (Decision 4, closed 2026-05-19)
+### §6.1 Cloud cascade (Decision 4, closed 2026-05-19; amended 2026-05-24)
 
-Priority chain for cloud routing:
+**Amended 2026-05-24:** Decision 4 was restructured from a strict-priority chain into structural classes (full doctrine in DECISIONS_v19.md Decision 4 2026-05-24 Small Amendment). The class structure is canonical; the priority chain below is preserved as a tie-breaker when task class is genuinely ambiguous.
 
-1. **Claude Pro (two accounts)** — primary for building / design / frontier reasoning. Two accounts in parallel.
-2. **DeepSeek V4 Flash** — synthesis tier. News Stage 2 default fallback. Cost ~$0.15-0.20/month for news.
-3. **Kimi K2.6 (Moonshot)** — overflow when Pro walls. **No Moonshot key currently in api_keys.env** — Decision 4 Tier 3 is theoretical until key acquired (small mission, not blocked).
-4. **Haiku 4.5** — latency-sensitive light tasks.
-5. **Anthropic API direct** — money-on-line, NDA-tagged, programmatic. Tier 3 authority always (surface before invocation).
+**Structural classes (operational cascade as of 2026-05-24):**
+
+| Class | Providers | Role |
+|---|---|---|
+| Workflow-tier-zero | Claude Pro (×2) | Operator default for building/design; **not Jarvis-routed**, not in Quota Cascade Policy. |
+| Peer rotation | DeepSeek V4 Flash, Kimi K2.6 | Active workhorse pair. Rotate by fullest-peer rule at 20% / 10% thresholds per AUTHORITY_SPEC §Quota Cascade Policy. |
+| Emergency rung | Anthropic API direct | Tier 3 per-call invocation already. Vestigial — doctrine-forward, not yet wired. |
+
+**Haiku 4.5 deprecated 2026-05-24.** Originally specced as the latency niche class. Pricing parity with DeepSeek V4 Flash at lower capability makes it redundant. Removed from the operational cascade. Re-open condition: a future provider with a genuinely-distinct latency profile re-justifies a latency niche class.
+
+**Tie-breaker priority chain (when task class is ambiguous):** Claude Pro → DeepSeek V4 Flash → Kimi K2.6 → ~~Haiku 4.5~~ → Anthropic API direct.
 
 Cowork is retired as a pipeline stage. The news pipeline Stage 4 migration from Cowork to DeepSeek V4 Flash predated Decision 4 and forced the cascade order — Decision 4 was largely a doc formalization of work already executed.
 
@@ -494,21 +500,24 @@ The cardinals are the architectural commitments that v19 turns on. Three closed,
 
 **Comfort mode** would park T1 and run T6 burst-up under tight VRAM constraints. **Conservative mode** would require T2 + T4 down. **Aggressive mode** would push expert offload higher with quality tradeoffs. Mode selection is one of the open Decision 3 axes.
 
-### §9.4 Decision 4 — Cloud routing chain (CLOSED 2026-05-19)
+### §9.4 Decision 4 — Cloud routing chain (CLOSED 2026-05-19; amended 2026-05-24)
 
-**Statement.** Per §6.1. Pro (×2) → DeepSeek V4 Flash → Kimi K2.6 → Haiku 4.5 → Anthropic API direct. Cowork retired.
+**Statement (original 2026-05-19).** Per §6.1 priority chain. Cowork retired.
 
-**Status:** Mostly a doc formalization. Stage 4 news migration to DeepSeek had already executed; Decision 4 wrote down the cascade order.
+**Amendment v1 (2026-05-24) — Structural class reframe.** The cascade is not a strict hierarchy. Three structural classes: workflow-tier-zero (Pro, operator-driven; not Jarvis-routed) / peer rotation (DeepSeek V4 Flash ↔ Kimi K2.6, fullest-peer rotation per AUTHORITY_SPEC §Quota Cascade Policy) / emergency rung (Anthropic API direct, Tier 3 per-call). Full doctrine in DECISIONS_v19.md.
+
+**Amendment v2 (2026-05-24) — Haiku 4.5 deprecated.** Originally specced as a latency niche class. Pricing parity with DeepSeek V4 Flash at lower capability makes it redundant. Removed from cascade. Re-open condition: a future provider with a genuinely-distinct latency profile re-justifies a latency niche class.
+
+**Status:** Closed 2026-05-19 with original priority chain; reframed 2026-05-24 into class structure. Original priority chain preserved as tie-breaker when task class is ambiguous.
 
 **Open small missions related to Decision 4:**
 
 - Throughput-tier model ambiguity (§6.3) — used in leads and financial opencode.jsonc but not explicitly placed in cascade.
-- No Moonshot/Kimi key — Tier 3 of cascade is theoretical until key acquired.
-- Decision 4 doesn't address quota saturation across two Pro accounts — i.e., when both Pro accounts wall, what's the actual cascade? Specced as "DeepSeek V4 Flash" but quota.py listener needs to track Pro usage to make this decidable.
+- No Moonshot/Kimi key — peer-rotation rung is half-wired until key acquired.
 
-### §9.5 Decision 5 — Jarvis authority model (IN PROGRESS)
+### §9.5 Decision 5 — Jarvis authority model (CLOSED 2026-05-24)
 
-**Status.** AUTHORITY_SPEC_v19.md drafted 2026-05-19 (commit `8b59cce`). Operator confirmation walkthrough ran 2026-05-21 through 2026-05-22, **Items 1-5 banked across three commits; Items 6-8 + Quota Cascade threshold ratification pending.**
+**Status.** AUTHORITY_SPEC_v19.md drafted 2026-05-19 (commit `8b59cce`). Operator confirmation walkthrough ran 2026-05-21 through 2026-05-24. **All eight items + Quota Cascade Policy ratified.**
 
 Commits closing Items 1-5:
 
@@ -524,16 +533,16 @@ Commits closing Items 1-5:
 
 **Overnight Workload Window (replaces the prior "Sleep Window Rules" section in AUTHORITY_SPEC):** Weekday baseline 23:00-07:00 ET. Controls three things — (1) pipeline scheduling preference (news at 05:15/05:30/06:00, financial Phase A pre-market when wired); (2) Substrate Pressure Cascade's self-offload availability (only within window); (3) voice/push notification quieting (visual still hits `jarvis-q events`). Bypass severity ladder (now "Notification Interrupt Conditions") fires regardless of window state. Weekend variability deferred. Outside window — including weekday 9-5 working hours when operator is away — notifications fire normally (operator needs trade-completed, workflow-failure signals when not at keyboard).
 
-**Cold-start rule.** All new actions begin in Tier 3. Promotion to Tier 2 happens after N consecutive successful surfaces without operator correction (N=10 default already written into Tier 1 inclusion criteria in the spec; Item 7 ratifies as policy).
+**Cold-start rule (ratified 2026-05-24).** All new actions begin in Tier 3. **No override at introduction** — strict cold-start. Promotion to Tier 2 happens after N=12 consecutive successful surfaces without operator correction; Tier 2 → Tier 1 also at N=12. Total cold-start to silent operation: minimum 24 operator-acknowledged successful runs. **Material behavior change to an existing action re-enters at Tier 3** — a changed action is treated as new for cold-start purposes.
 
 **Substrate Pressure Cascade (now in AUTHORITY_SPEC, see §10.4 below for full doctrine):** Continuous intensity band over 2.5 GB → 500 MiB free VRAM. Three response kinds — eviction, self-offload, API routing — blend with scaling intensity. Stateless: response is a function of current pressure, not past escalation. The prior "two-band 1500/500 threshold" framing from initial bible compile is **superseded**; the audit's catch that vram.py uses 2000/500 in code (not 1500/500) is moot under the continuous-intensity-band framing — those values were proposed for a discrete-trigger design that no longer exists.
 
-**What's still pending in the walkthrough:**
+**Items 6-8 + Quota Cascade Policy closure (2026-05-24):**
 
-- Item 6: Pro tier estimation (per-account msg/5h estimate feeding the Quota Cascade Policy's early-warning signal — Pro=~45 msg/5h, Max 5x=~225 msg/5h, Max 20x=~900 msg/5h per Anthropic support docs; weekly cap and peak-hours acceleration are real factors the v19 spec needs to address).
-- Item 7: promotion threshold N=10 confirmation (value already in spec; operator ratifies as policy).
-- Item 8: cold-start rule confirmation (everything starts Tier 3).
-- Quota Cascade Policy thresholds: 20% / 10% under prepaid model — partner-derived from operator's "once the budget is hit it's hit" constraint; explicit numeric ratification still pending.
+- **Item 6 — Pro tier estimation: DESCOPED.** Pro is workflow-tier-zero (operator-driven, not Jarvis-routed); not in the Quota Cascade Policy. Pro auth flows through Claude Code's built-in subscription path, not LiteLLM, so Pro requests are opaque to `spend_logs` regardless. Re-open condition: an automated Pro-1 → Pro-2 → T6 failover mechanism is built that dispatches interactive workloads across Pro accounts without operator-in-loop.
+- **Item 7 — Promotion threshold: N=12, uniform across both rungs.** Tier 3 → Tier 2 → Tier 1 each requires 12 operator-acknowledged successful runs without correction; total cold-start to silent operation is minimum 24 runs. Changed from N=10 (which had been written into the draft spec) to N=12 during the walkthrough ratification.
+- **Item 8 — Cold-start rule: strict.** All new actions begin at Tier 3, no override at introduction. Material behavior change to an existing action re-enters at Tier 3 (changed actions are treated as new for cold-start purposes). The cold-start rule is the data-collection mechanism for the promotion threshold — without it, the threshold has no baseline.
+- **Quota Cascade Policy thresholds: 20% / 10% with fullest-peer rotation, plus drain phase.** Peer rotation between DeepSeek V4 Flash ↔ Kimi K2.6: at every threshold cross on the active peer, Jarvis rotates to whichever peer has more remaining balance (Tier 2 action, logged event, no surface). When both peers are below 10%, drain phase engages — Jarvis drains each peer to zero with a per-percent notification overlay driving reload urgency (Tier 2 routing + operator-facing notification, not Tier 3). Goal: maximize prepaid value rather than strand budget.
 
 ### §9.6 Decision 6 — v19 scope (CLOSED 2026-05-19)
 
@@ -642,7 +651,7 @@ The rebalance closes the loop on Decision 1. Without it, Decision 1 is doctrine 
 
 Covered structurally in §9.5. This section is the detailed state of the in-flight walkthrough.
 
-### §12.1 Walkthrough state (as of 2026-05-22)
+### §12.1 Walkthrough state (CLOSED 2026-05-24)
 
 | Item | Status | Commit | Banked |
 |---|---|---|---|
@@ -651,10 +660,10 @@ Covered structurally in §9.5. This section is the detailed state of the in-flig
 | 3 — Tier 3 surface-and-ask list | ✅ ratified+extended | 50692bd | Added: T1 restart → Tier 3. Latency cascade failed → Tier 3. Unified Quota Cascade Policy with prepaid framing (20%/10% thresholds — explicit numeric ratification still pending). |
 | 4 — Overnight Workload Window | ✅ reshaped | 414d5b2 | Weekday baseline 23:00-07:00 ET; weekend deferred. Hard Constraints section added (4 rules). "Sleep Window Rules" removed; replaced with Overnight Workload Window (scheduling + notification policy) + Substrate Pressure Cascade. Schema field renames (`sleeping_window_*` → `overnight_window_*`; defaults 22:30→23:00, 06:00→07:00). |
 | 5 — Bypass severity ladder + cascade reframe | ✅ ratified | f0675da | GPU thermal as-is (85°C/60s). Security as-is (operator multi-IP/VPN usage). Spend burst as-is ($5/5min). OOM narrowed to RAM only. New entry: "VRAM cascade exhausted" (VRAM<500MiB AND Quota Cascade in Tier 3). Power kept but marked deferred-pending-listener. Substrate Pressure Cascade reframed sequential→continuous intensity band 2.5 GB → 500 MiB free VRAM; three response kinds blend; stateless recalibration; checkpoint switchover. |
-| 6 — Pro tier estimation | ⏳ pending | — | Walkthrough deferred to next session. Anthropic support docs (verified 2026-05-22): Pro ~45 msg/5h; Max 5x ~225 msg/5h; Max 20x ~900 msg/5h. Plus weekly cap layer. Plus peak-hours acceleration (5am-11am PT weekday) — multiplier not published. v19 spec needs to choose single-axis vs two-axis (session+weekly) vs three-factor (peak-aware) estimate model. |
-| 7 — Promotion threshold N | ⏳ pending | — | N=10 already written into Tier 1 inclusion criteria in spec; Item 7 ratifies as policy. |
-| 8 — Cold-start rule | ⏳ pending | — | "All new actions start at Tier 3" — operator confirm. |
-| Quota Cascade thresholds | ⏳ pending | — | 20% / 10% under prepaid model — partner-derived from operator constraint; explicit numeric ratification pending before Decision 5 fully closes. |
+| 6 — Pro tier estimation | ✅ descoped | 2026-05-24 | Pro is workflow-tier-zero (operator-driven, not Jarvis-routed); not in Quota Cascade Policy. Pro auth via Claude Code subscription path, not LiteLLM. Re-open condition: automated Pro-1 → Pro-2 → T6 failover built. |
+| 7 — Promotion threshold N | ✅ ratified | 2026-05-24 | **N=12**, uniform across both rungs (Tier 3 → Tier 2 → Tier 1). Total cold-start to silent operation: minimum 24 operator-acknowledged successful runs. Changed from N=10 draft value during ratification. |
+| 8 — Cold-start rule | ✅ ratified | 2026-05-24 | Strict — all new actions begin Tier 3, **no override at introduction**. Material behavior change to existing action re-enters at Tier 3. |
+| Quota Cascade thresholds | ✅ ratified | 2026-05-24 | **20% / 10% with fullest-peer rotation** between DeepSeek V4 Flash ↔ Kimi K2.6; drain phase with per-percent notification overlay when both peers < 10%. New authority primitive introduced: Tier 2 routing + operator-facing notification (scoped to Quota Cascade Policy, not promoted to general AUTHORITY_SPEC primitive). |
 
 ### §12.2 New authority primitive: Tier 3 split
 
@@ -699,8 +708,8 @@ Two listeners running, fed into state.json every 10s:
 
 - Parses LiteLLM logs for spend per provider, token consumption, rate-limit proximity, cost-per-task.
 - **Logging path: Path A ratified 2026-05-24** (separate `litellm_logs` DB on existing postgres instance, `store_prompts_in_spend_logs=false`). quota.py queries postgres `spend_logs` via psycopg2/asyncpg using a dedicated `LITELLM_DB_URL` (separate from the news-pipeline `DATABASE_URL`). See PHASE2_SPEC §quota.py for the full ratification block and Claude Code implementation handoff.
-- `_build_initial_model()` in `jarvis/state.py` constructs CloudQuota entries for `claude_pro_1`, `claude_pro_2`, `deepseek_v4_flash`, `kimi_k2_6` (rename from `deepseek_v3` landed 2026-05-24; audit A6 closed). **Missing entries to add per Decision 4: `haiku_4_5`, `anthropic_api_direct`** — currently Tier D from cleanup commit 28933ac.
-- **Hard limitation:** Claude Pro doesn't expose quota via API. Pro usage walls are session-based and opaque. quota.py can only *estimate* Pro usage by counting requests/tokens sent. Estimate is "good enough to warn at 80% projected" but not authoritative.
+- `_build_initial_model()` in `jarvis/state.py` constructs CloudQuota entries for `claude_pro_1`, `claude_pro_2`, `deepseek_v4_flash`, `kimi_k2_6` (rename from `deepseek_v3` landed 2026-05-24 in commit `b524bb0`; audit A6 closed). **No `haiku_4_5` row** — Haiku 4.5 deprecated per Decision 4 v2 amendment 2026-05-24 (pricing parity with DeepSeek V4 Flash at lower capability). **`anthropic_api_direct` row deferred** to operational need (emergency rung is vestigial — doctrine-forward, not yet wired).
+- **Pro tracking descoped 2026-05-24** (Decision 5 Item 6 closure). Pro is workflow-tier-zero, not Jarvis-routed; Pro auth flows through Claude Code's built-in subscription path, not LiteLLM, so Pro requests would not appear in `spend_logs` regardless. Re-open condition: automated Pro-1 → Pro-2 → T6 failover built.
 
 **cron.py (~2-3 hr, nice-to-have not load-bearing)**
 

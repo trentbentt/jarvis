@@ -315,6 +315,18 @@ Decisions 2 and 3 are the remaining open cardinals but both are prerequisite-blo
 
 With (1) closed and (2) pending, `quota.py` needs only the schema-row work before it's fully unblocked for Claude Code. `process.py` is buildable today regardless (no further prereqs). Authority model is doctrine-complete — listener implementation work can begin whenever Claude Code picks it up.
 
+**Session 2026-05-24 (evening) — Doctrine propagation sweep**
+
+After today's morning cleanup commits (`385f893` / `e1dfddf` / `d7a8634` — Change-1 baseline refresh, PHASE2_SPEC sweep closure, HANDOFF §3 follow-up closure) and the Decision 5 close + Decision 4 amendments above, the doctrine layer (AUTHORITY_SPEC, DECISIONS) was ahead of the implementation-surface spec (PHASE2_SPEC) and the master_summary. The bible (INFRASTRUCTURE_BIBLE_v19.md) was discovered to be already-propagated on disk from an earlier session today — only PHASE2_SPEC, master_summary, and the audit doc needed touching. Evening sweep landed three commits:
+
+1. **PHASE2_SPEC `quota.py` Pro-descope** (commit `efd495e`) — deleted the "Pro quota estimation (the hard part)" subsection that would have driven Claude Code to build Pro tracking that (a) shouldn't exist per Decision 5 Item 6 closure and (b) couldn't work anyway (Pro auth flows through Claude Code's subscription path, not LiteLLM; Pro requests don't appear in `spend_logs`). Replaced with a descope note pointing to AUTHORITY_SPEC §Quota Cascade Policy. Removed `pro_wall_imminent` from the event emission table.
+2. **master_summary_v19** — nine edits: doc-set table AUTHORITY_SPEC row flipped to all-ratified; What-Changed-v19 Items 6-8 bullet rewritten with closure outcomes; open audit items list dropped A6 (closed in `b524bb0`) and A10 (resolved by today's N=12 ratification); §V19B Decision 4 + Decision 5 blocks updated; Tier A2 closed; Tier A3 two-Pro-saturation sub-item dropped; Tier B-D5.6/7/8/Q all flipped to ✅; Tier C3 quota.py prereq updated.
+3. **BIBLE_AUDIT_findings** — A10 entry annotated ✅ RESOLVED 2026-05-24 with the note that today's ratification *changed* the value (N=10 → N=12), not merely confirmed it. §F2 Still-open list removed A10.
+
+**Method note (two-strikes drift catch):** The originally-drafted heredoc planned five commits including a bible doctrine-propagation pass. First run aborted Commit 2 on assertion `FAIL 2h` — the bible §13.2 quota.py block on disk had already been edited beyond the project-knowledge upload used to build the heredoc. Diagnostic paste-from-disk revealed the disk had already been Path-A-ratified and A6-closed (per commits earlier today). Rebuilt with scoped 2h edits; re-run aborted on `FAIL 2a` — §6.1 was *also* already fully propagated. A second diagnostic paste against §6.1 / §9.4 / §9.5 / §12.1 showed the disk-actual bible had *all* of today's closure-propagation already in place from an earlier session. Commit 2 was dropped entirely as already-landed. **Lesson recorded: project-knowledge ≠ disk. Always paste-from-disk first when scripting edits against a doc that may have been touched in a parallel session today.** The asserts-with-mock-test pattern caught both drifts before any incorrect commit landed.
+
+**Next-session orientation:** PHASE2_SPEC + bible + master_summary + audit doc now all reflect AUTHORITY_SPEC and DECISIONS truth. Single source of truth restored across the doctrine layer. Next-session reading order works as designed (README → HANDOFF → bible → AUTHORITY_SPEC → DECISIONS → audit) — no cross-doc drift to triage.
+
 **Carried open items unchanged from prior sessions:**
 
 - A1 — Rebalance Change 2 measurement (T1 ctx 36K → 24K patched, awaits next natural T1 restart).

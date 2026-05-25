@@ -158,15 +158,11 @@ GROUP BY model;
 
 Use a dedicated Jarvis postgres connection (doesn't exist yet — wire via `psycopg2` or `asyncpg`; add to requirements.txt).
 
-**Pro quota estimation (the hard part):**
+**Pro quota — descoped 2026-05-24.**
 
-Anthropic doesn't expose Pro quota state. Approach:
+Pro is workflow-tier-zero (DECISIONS_v19.md Decision 5 Item 6 closure 2026-05-24; AUTHORITY_SPEC §Quota Cascade Policy "Provider Classes"). Operator-driven, not Jarvis-routed; not in scope for quota.py. Pro auth flows through Claude Code's built-in subscription path, not via LiteLLM — Pro requests would not appear in `spend_logs` regardless. Re-open condition: an automated Pro-1 → Pro-2 → T6 failover mechanism is built.
 
-- Track rolling 5-hour windows of Pro requests (Pro caps are 5-hour rolling)
-- Hard count requests sent to `claude-3-5-sonnet`, `claude-opus-4-7` via Pro auth path (model name is in spend_logs)
-- Estimated cap: ~250 messages per 5h on Pro Max, ~50 per 5h on standard Pro — OPERATOR TO CONFIRM your plan tier
-- Emit `pro_quota_warning` at 80% projected, `pro_quota_walled` if 429 response detected
-- Estimate is noisy; surface as "projected" not authoritative
+For cascade routing (DeepSeek V4 Flash ↔ Kimi K2.6 peer rotation, 20% / 10% thresholds, drain phase per-percent notification overlay), AUTHORITY_SPEC §Quota Cascade Policy is canonical. quota.py implements that policy against the prepaid balances of the peer-rotation rung and the emergency rung (Anthropic API direct) when wired.
 
 **Event emission rules:**
 
@@ -175,7 +171,6 @@ Anthropic doesn't expose Pro quota state. Approach:
 | Quota crosses 80% of budget | `quota_approaching` | warning |
 | Quota crosses 100% of budget | `quota_exceeded` | critical |
 | First 429 from any provider | `rate_limit_hit` | warning |
-| Pro projected wall in < 1h | `pro_wall_imminent` | warning |
 | New burst of spend (>$1/min sustained 5min) | `spend_burst` | warning |
 
 State-transition rule applies: don't re-emit `quota_approaching` while staying above 80%.

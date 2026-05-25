@@ -88,7 +88,7 @@ self._restart_history: dict[str, list[datetime]]  # tier_id → timestamps
 - **Haiku 4.5 deprecated** (DECISIONS_v19.md 2026-05-24 amendment): pricing parity with DeepSeek V4 Flash at lower capability; removed from cascade entirely. Do not add a `haiku_4_5` entry.
 - **Anthropic API direct vestigial** (DECISIONS_v19.md 2026-05-24 amendment): emergency rung is doctrine-forward but not yet wired (operator-confirmed). Add `anthropic_api_direct` only when operational need materializes, not preemptively.
 
-**Schema.py reality check (2026-05-24):** the file defines the `CloudQuota` Pydantic class but no provider name rows are hardcoded there. Provider rows live elsewhere — `_build_initial_model()` location TBD (see HANDOFF follow-up #2). The code block below shows the *original instructed shape* — preserved for historical reference, NOT to be executed as written. Wider sweep of "5-tier" / "haiku" / cascade-hierarchy references elsewhere in this spec is queued as HANDOFF follow-up #3.
+**Schema.py reality check (2026-05-24):** the file defines the `CloudQuota` Pydantic class but no provider name rows are hardcoded there. Provider rows live elsewhere — `_build_initial_model()` location TBD (see HANDOFF follow-up #2). The code block below shows the *original instructed shape* — preserved for historical reference, NOT to be executed as written. Wider sweep of "5-tier" / "haiku" / cascade-hierarchy references elsewhere in this spec ran 2026-05-24: no other references found outside this deprecated block.
 
 Original instruction (historical, do not execute):
 

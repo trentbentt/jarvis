@@ -150,7 +150,7 @@ Proposed:
 - T1: 36K → 24K context, frees ~1 GB (assumes Decision 1 — T1 becomes Hermes/Jarvis host, not OpenCode harness)
 - T2: drop from always-on to burst-only, frees 6.8 GB (assumes Decision 4 — synthesis goes to cloud)
 - T4: optionally reduce -np 4 → -np 2, frees ~1 GB
-- Result: baseline ~14-15 GB / 60% — plenty of room for T6 expert-offload burst
+- Projected result if all 3 changes execute: baseline ~14-15 GB / 60% (actual post-Change-1: 16.5 GB / 66%; see next paragraph for per-change status)
 
 Change 1 (T2 → burst-only) executed and live-validated 2026-05-20: t2-down baseline 66.1% measured via jarvis-q vram, idempotent, Jarvis catches transitions inside 5s polling. Change 2 (T1 ctx 36K → 24K) gated on cold-cycle test of inference-up patch. Change 3 (T4 -np 4 → 2) deferred per REBALANCE_v19.md.
 

@@ -137,7 +137,7 @@ Two subsystems receive full phase-level treatment in v19. Two are reduced in sco
 
 ## What's Now Unblocked
 
-- **Standard mode rebalance.** Concrete engineering task with doctrine behind it: T2 → burst-only, T1 context 36K → 24K, T4 `-np` 4 → 2. Target baseline ≤ 60% (≤ 14.4 GB).
+- **Standard mode rebalance.** Executing per REBALANCE_v19.md. Change 1 (T2 → burst-only) live 2026-05-20, measured baseline 66.1%. Change 2 (T1 ctx 36K → 24K) patched in `c0f7ea7`, measurement pending next natural T1 restart. Change 3 (T4 `-np` 4 → 2) deferred. Target baseline ≤ 60% (≤ 14.4 GB) at full execution; actual 66% post-Change-1.
 - **Stack CONTEXT.md pass.** Six files (consultancy / content / design / financial / leads / exploratory-coding) need updates: synthesis components route to cloud, Cowork references removed, LoRA references marked deferred.
 - **Financial pipeline phase-level design.** Tier 3 work can begin.
 - **v18 → v19 master summary.** Deferred until rebalance is executed and measured.
@@ -149,7 +149,7 @@ Two subsystems receive full phase-level treatment in v19. Two are reduced in sco
 
 ## Note on Rebalance Headroom
 
-Projected post-rebalance baseline: ~14-15 GB / 60%. That leaves ~9 GB free at idle — more headroom than T6 expert-offload strictly needs.
+Measured post-Change-1 baseline: 16.5 GB / 66% (Change 2 patched, measurement pending; Change 3 deferred). That leaves ~7.5 GB free at idle — adequate for T6 expert-offload burst (Change 2 expected to free another ~1 GB on measurement).
 
 Pre-decide whether the slack stays as T6 burst capacity, or gets reclaimed for one of:
 

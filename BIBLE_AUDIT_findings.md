@@ -81,11 +81,12 @@ Tier D3 (CLAUDE.md update) is more urgent than bible portrayed.
 - Actual end-of-session state in 5_21_26_2.pdf: session ends mid-Item-4 with three options proposed (lock 23:00–07:00 now / defer / two-window) and the operator's response was a *correction* ("remember t1 is jarvis, t6 is the coder") followed by session end.
 - Item 4 status is "discussion in progress" not "reshaped." The reshape happened in *this* current session in response to operator's "Jarvis offload" framing.
 
-### A10. AUTHORITY_SPEC Tier 1 lists ≥10 successful runs as the promotion threshold
+### A10. AUTHORITY_SPEC Tier 1 lists ≥10 successful runs as the promotion threshold — ✅ RESOLVED 2026-05-24 (Item 7 walkthrough ratified N=12, not N=10; AUTHORITY_SPEC updated to reflect uniform N=12 across both rungs)
 
 - Bible §9.5 said "N=10 proposed default, Item 7 pending."
-- Actual AUTHORITY_SPEC_v19.md line 21: "Has run successfully ≥ 10 times without correction" is the criteria for Tier 1 inclusion.
-- N=10 is already *written into the draft spec*, not pending. The pending item is "Operator confirms N=10" — which is checklist Item 7, the confirmation, not the value itself.
+- Actual AUTHORITY_SPEC_v19.md line 21 (pre-close): "Has run successfully ≥ 10 times without correction" was the draft inclusion criterion.
+- Original framing: "N=10 already written into draft spec; pending item is operator confirmation."
+- **Resolution 2026-05-24:** Item 7 walkthrough changed the value to **N=12** during ratification, not merely confirming N=10. The audit's framing ("value already in spec, just needs confirmation") was itself outdated — the walkthrough proved that operator confirmation can revise the proposed value, not just ratify it. Closure: N=12 uniform across both rungs (Tier 3 → Tier 2 → Tier 1), total cold-start to silent operation minimum 24 runs. AUTHORITY_SPEC §"Action Lifecycle" reflects this.
 
 ### A11. Sleep window in schema is 22:30–06:00, not 23:00–07:00 — ✅ RESOLVED 2026-05-22 (commit 414d5b2; schema fields renamed `sleeping_window_*` → `overnight_window_*` and defaults harmonized to 23:00 / 07:00 to match spec)
 
@@ -300,7 +301,6 @@ I can produce a revised v2 of the bible incorporating all of the above, or you c
 - A3 (CLAUDE.md materially stale — Tier D backlog)
 - A5 (state.json schema_version "0.1.0" — small mission #4)
 - A7 (v18 Hermes brainstorm may not exist — Decision 2 prereq question)
-- A10 (N=10 distinction — Item 7 ratification surfaces this)
 - A12 (SystemModel 9 domains vs docstring 8 — cosmetic schema fix)
 - A13 (HANDOFF intra-doc drift inference vs control session — Tier D backlog)
 

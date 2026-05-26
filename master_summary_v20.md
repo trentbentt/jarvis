@@ -163,7 +163,7 @@ Lines that do not move under any combination of resource pressure, operator abse
 | `control` | long-lived; survives `inference-down` | bootstrap, **jarvis**, validation-gate, lora-dispatcher, litellm, t1-interactive | T1 is the Jarvis reasoning brain per Decision 1. LiteLLM routes to cloud during dataplane burst-down. VG/LD/Jarvis are services, not tiers. |
 | `inference` | dataplane; cycle-safe | bootstrap, t3-content, t4-phi4, t5-small (+ t2-pipeline when burst-up, future t6-coder when deployed) | `tmux kill-session -t inference` is semantically safe — only dataplane dies. |
 
-`whisper` is a separate small session for the dictation system (§14), unrelated to inference.
+`whisper` is a separate small session reserved for the Phase 18 voice-to-voice STT component (§14.3). Currently preparatory — session topology staked out, no inference process yet. Distinct from Phase 17.5 dictation, which is entirely MacBook-resident (§14.1) and does not touch monarch.
 
 **The Jarvis daemon runs in the `control` session** (commit `9858a6a` moved it from `inference`). `HANDOFF_v19.md:114` "runs as a window in the inference tmux session" is stale; this is tracked as audit A13 (§16).
 
@@ -267,11 +267,9 @@ Health endpoints (per `schema.py:413-424` `MONARCH_HEALTH_COMPONENTS`): llama-se
 
 - **Session:** `inference` (Path B, when deployed)
 - **Status:** Model not yet downloaded (~21 GB pull pending). Spin-up tooling (`~/bin/t6-up`, `~/bin/t6-down`) not yet written.
-- **Two VRAM operating modes:**
-  - **Pure VRAM (no expert offload):** ~21 GB, full MoE 3B active at ~80–100 tok/s with `--cache-type-k q8_0`.
-  - **Partial expert offload (~25%):** ~17–19 GB, somewhat reduced throughput.
-- **Role:** On-demand burst coder. Overflow valve for Claude Pro walls, NDA-tagged work, or quality-needed local coding. The "coder" of Decision 1.
-- **Decision 3 status:** OPEN (§9.3). Defaults blocked on download + Rebalance Change 2 measurement.
+- **Operating mode (D5 CLOSED 2026-05-26):** Single mode, 50-60% expert offload, targeting ~100 tok/s throughput with `--cache-type-k q8_0`. Actual VRAM footprint pending measurement at download time — projected range ~14-17 GB.
+- **Role:** Reserve coder. Primary coding workloads route to Claude Pro ×2 (operator-driven, building/design) and Kimi K2.6 (peer rotation per Decision 4). T6 is the local backup for can't-wait missions, NDA-tagged work where cloud routing is disallowed, or low-level coding tasks where the spin-up cost is acceptable. The ~100 tok/s target reflects this — T6 is not optimized for raw throughput; it is the overflow valve when remote isn't an option.
+- **Decision 3 status:** OPEN (§9.3). Spin-up tooling and downloaded model remain blockers; D5 closure resolves the operating-mode question.
 
 ### §5.7 mmap weight sharing — the architectural reason five tiers fit
 
@@ -768,20 +766,19 @@ Once API is serving the routed workload, observed VRAM free rises and the cascad
 - Phase 2 listeners measure against a stable baseline, not a shifting one.
 - "Comfort / conservative / aggressive" modes from Decision 3 become real choices instead of "T6 cannot run."
 
-### §11.5 Headroom disposition decision
+### §11.5 Headroom disposition decision (D5 CLOSED 2026-05-26)
 
 Measured post-Change-1 baseline 16.5 GB / 66%. Change 2 will free another ~1 GB on measurement. Change 3 deferred. That leaves ~7.5–8.5 GB free at idle.
 
-Pre-decide whether the slack stays as T6 burst capacity, or gets reclaimed for one of:
+**Decision.** T1 context is allocated dynamically up to available VRAM — no static ceiling. The Substrate Pressure Cascade (§10.3) manages VRAM pressure by evicting burst tiers (T2 typically idle, T6 burst-only) before T1 is ever touched per Hard Constraint #1. T1 self-offload to RAM/CPU remains the maximum degradation under cascade depth, gated to the overnight window per §10.3. Change 2's 24K patch lands as the post-restart starting point; runtime context is not statically capped. T4 unchanged at `-np 4`. Whisper preload is not a standard-mode baseline item — it is Phase 18 STT infrastructure (§14.3), distinct from Phase 17.5 dictation (MacBook-resident).
 
-- T1 context restored to 36K (or extended past it)
-- T4 `-np` raised to 6 or 8
-- Whisper preloaded for voice dictation (Phase 17.5)
-- Reserved for a second concurrent T6 burst session
+**Phase 18 voice layer is the consumer for the headroom.** When voice-to-voice ships (§14.3), monarch hosts a Whisper STT instance (currently the `whisper` tmux session, preparatory) and a TTS counterpart (ChatterBox or equivalent open-source). Combined footprint ~1.5-3 GB VRAM when active, burst-shaped (operator-invoked conversation, not always-on). Comfortable inside the current headroom; does not change the standard baseline.
 
-Don't let this become unspoken. Decide before T6 spin-up tooling lands.
+**T6 single operating mode** (§5.6 updated): 50-60% expert offload targeting ~100 tok/s. Reserve coder — primary coding routes to Claude Pro ×2 and Kimi K2.6; T6 is the local backup for can't-wait, NDA-tagged, or low-level coding missions where remote routing is unsuitable. Actual VRAM footprint pending model download and measurement. T6 burst still requires the cascade to evict T2 and may require T4 to step down depending on measured footprint — the three-mode arithmetic of §10.1 still applies.
 
-**Phase 1.5 RAM-vs-VRAM clarification (2026-05-26).** The phase 1.5 commitments per §9.6 amendment (Elasticsearch + Milvus + Redis) consume **RAM, not VRAM**. They do not compete for the ~7.5-8.5 GB VRAM headroom this section discusses. RAM projections handled in §2; remain inside 96 GB ceiling with ~50-52 GB free at idle. This decision (D5 in the open queue) is purely about VRAM allocation.
+**Phase 1.5 RAM-vs-VRAM clarification.** The phase 1.5 commitments per §9.6 amendment (Elasticsearch + Milvus + Redis) consume **RAM, not VRAM**. They do not compete for the ~7.5-8.5 GB VRAM headroom this section discusses. RAM projections handled in §2; remain inside 96 GB ceiling with ~50-52 GB free at idle.
+
+**Re-open conditions.** A measured T6 footprint at 50-60% offload meaningfully different from the ~14-17 GB range projected here; Phase 18 voice layer measured VRAM substantially above 3 GB; introduction of any new always-on workload that would consume baseline headroom.
 
 ---
 
@@ -1023,7 +1020,15 @@ They share **only the physical microphone**. The wake words must be distinct ("O
 
 **Status:** design complete, build deferred. The supervisor responsibilities that v17/v18 specced as the Phase 18 burst-mode supervisor have been **generalized in §9.5 / §10.3 into the Substrate Pressure Cascade plus the latency-band routing cascade** — those doctrines now own the role. Phase 18 voice surface remains the next operator-touch surface but is no longer the next major build target; the Phase 2 listeners are.
 
-When Phase 18 ships, it will be the operator-facing audio output layer for the substrate orchestration already specced. Build sequencing: after Phase 2 listeners complete, after Decision 5 listener implementations land, after Phase 17.5 lessons inform the engineering plan.
+**Architecture.** Two halves running on monarch when active:
+- **STT (speech-to-text):** Whisper instance in the `whisper` tmux session on monarch (currently preparatory; see §4.1). GPU-accelerated, ~500 MB-1 GB VRAM when loaded.
+- **TTS (text-to-speech):** Candidate is ChatterBox (Resemble AI, Apache 2.0, released April 2025) — emotion-controllable, natural prosody, CUDA-native, fits the RTX 3090 profile at ~1-2 GB VRAM. Alternative open-source TTS layers may displace this when Phase 18 build starts; ChatterBox is the doctrinal placeholder, not a hard commitment.
+
+Combined footprint ~1.5-3 GB VRAM when active. Burst-shaped: operator-invoked conversation, not always-on inference. Comfortable inside current standard-mode headroom per D5 (§11.5).
+
+**Value proposition.** Conversational access to Jarvis's full understanding of the codebase (L5 Codebase-Memory MCP), doctrine (L6 vault), live system state (Phase 1+2 listeners), git history, and agent procedures (L4 Hermes skills) — without the operator needing to jump into the weeds of files. Jarvis already holds the structural knowledge; the voice surface makes it conversationally accessible. Maps to the §3.2 architectural test question four ("Can Jarvis explain it?") and the §3.1 documentation router role.
+
+**Build sequencing:** after Phase 2 listeners complete, after Decision 5 listener implementations land, after Phase 17.5 lessons inform the engineering plan. Phase 17.5 and Phase 18 share only the physical microphone — wake words and intent classifiers are independent per §14.2.
 
 ---
 

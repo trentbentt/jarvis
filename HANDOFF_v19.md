@@ -335,6 +335,112 @@ After today's morning cleanup commits (`385f893` / `e1dfddf` / `d7a8634` — Cha
 
 ---
 
+## Session 2026-05-26 — D1-D4 close + memory architecture design
+
+Long working session. Two distinct workstreams: surgical doctrine-vs-code drift closure (D1-D4) plus the full memory architecture design conversation that reframes Decisions 2 and 6.
+
+### Doctrine-vs-code drift closures (committed to disk)
+
+Four small design items from v20 §16 walked and closed against actual code, not project-knowledge. Drift-catch pattern from 2026-05-24 evening sweep applied — every patch verified against disk with `grep` / `sed` / Python read-modify-write before commit.
+
+1. **D2 — `Health.sweep_interval_sec` stripped.** Field at `schema.py:349` defined but never read; `tier_health.py:104` hardcodes 15.0s as a class attribute (the pattern all five listeners use). Strip per v20 NEW-v20-6 and §0 rule 4 (no loose ends in code). Pydantic v2 default `extra="ignore"` handles silent drop of the stale `sweep_interval_sec: 30` entry in existing state.json on next load. Single-line deletion + commit.
+
+2. **D3 — `haiku_4_5` quota row pruned; `anthropic_api_direct` annotated as vestigial.** Decision 4 v2 deprecated Haiku 4.5 (pricing parity with DeepSeek V4 Flash at lower capability, redundant). The row at `state.py:_build_initial_model()` was kept as forward-compat hook through v19; v20 NEW-v20-7 asks for prune-or-keep. Pruned haiku_4_5 entirely (re-open condition is a new provider filling the latency niche, which will have a different model name anyway). Kept `anthropic_api_direct` with three-line inline comment marking it as vestigial — emergency rung for NDA / money-on-line work per Decision 4 v2, not yet wired through LiteLLM. Fresh-build cold-start now produces exactly 5 quota rows.
+
+3. **D1 — Orphan quota key prune + missing-key hydrate on `load_from_disk()`.** `quotas.quotas` is `Dict[str,CloudQuota]`; Pydantic's `extra="ignore"` does not prune dict-value keys. Added an explicit prune+hydrate pass to `state.py::load_from_disk()` immediately after `model_validate(data)`: orphan keys (anything outside the canonical set) are deleted with an INFO log; missing canonical keys are hydrated from `_build_initial_model()` defaults. Caught and cleaned three live orphans in production state.json: `deepseek_v3` (renamed in `b524bb0` 2026-05-24 but never cleaned from runtime), `haiku_4_5` (just-pruned from code in D3 above), and the missing `deepseek_v4_flash` row (never written after the rename — primary peer-rotation provider had no quota tracking until this patch). Hydration step closed a live gap, not just a cosmetic drift.
+
+4. **D4 — `schema_version` confirmed label-only.** Audit A5 asked what migration logic should do when it eventually lands. Walked three options (A: registry with no-op transforms, B: cleanup-only no versioning, C: strip the field entirely). Settled on Option B trimmed — `schema_version` stays as a human-readable label, no migration transforms are part of the design for this stack. Cold-cycle discipline (the existing operator practice) is the migration strategy. Added a three-line comment above the field in `schema.py` making this explicit so no future agent builds migration logic against it.
+
+5. **NEW-v20-2 (`sleeping_window_*`) — confirmed self-healing, no action needed.** Verified on disk that `OperatorPreferences` loads `overnight_window_start=23:00` / `overnight_window_end=07:00` correctly from schema defaults despite stale `sleeping_window_start: "22:30"` / `sleeping_window_end: "06:00"` keys still present in state.json. Pydantic's field-level `extra="ignore"` handles this without code change.
+
+Commits landed: D2 (single commit), D3 (single commit), D1+D4 (single combined commit). Backup files (`*.D2-backup`, `*.D3-backup`, `*.D1D4-backup`) sit on disk for rollback; ignored by git via existing `*-backup` patterns.
+
+### Method note — interpreter discovery quirk worth banking
+
+Validation steps initially failed with `ModuleNotFoundError: No module named 'pydantic'` because the system `python3` differs from the Jarvis runtime interpreter. The daemon launches via `deploy.sh` which sources `/home/monarch/venv/inference/` before invoking `python3 daemon.py`. The same `~/venv/inference/` venv hosts the inference stack (LiteLLM, llama-cpp-python) AND Jarvis. Naming is a misnomer — it's the shared monarch-stack venv, not inference-only. Banked for the A3 doc cleanup mission: `~/projects/jarvis/CLAUDE.md` should name `~/venv/inference/bin/python3` as the canonical interpreter for any session running tests, repls, or one-off validation, with a one-line note explaining the naming history.
+
+### D7 — Decision 2 (Hermes) artifact question resolved
+
+Pre-session sweep ran `grep -rni hermes ~/projects/` and `find ~ -name "*hermes*" -o -name "*HERMES*"`. Results: only INFRASTRUCTURE_BIBLE_v19.md references (all circular — "the brainstorm exists, needs to be pasted"), one news-pipeline SQL comment about Nous Hermes model family, and unrelated vllm/npm hits. **No v18 Hermes brainstorm artifact exists on monarch.** Audit A7 closes as confirmed absent — the proposed shape in v20 §9.2 (Pattern B, Curator narrow-scope, memory writes disabled, routed via DeepSeek V4 Flash) is the entire prior thinking.
+
+What followed was the deeper conversation: the operator's actual reference was Nous Research's Hermes Agent (github.com/NousResearch/hermes-agent), a 134k-star MIT-licensed open-source agent framework that ships v0.3.0 with persistent memory, autonomous skill creation, multi-platform messaging gateway, MCP integration, OpenAI-compatible API endpoint, cron scheduler, and an Atropos RL training pipeline. This is a substantially different artifact than the bespoke "Hermes layer" the v18 brainstorm appeared to imagine — and it's a production system already solving most of the problems Nexus and 2nd Brain were designed for. Decision 2 doesn't close on the v19 framing; it reframes against the real artifact.
+
+### Memory architecture design — full conversation, no doctrine landed yet
+
+Worked through the full memory landscape with the operator. Surveyed and compared:
+
+- **Hermes Agent memory** — file-backed (MEMORY.md, USER.md, SOUL.md) + SQLite session search (FTS5) + autonomous skill creation + 8 optional external provider plugins (Honcho, Mem0, Hindsight, Holographic, RetainDB, ByteRover, Supermemory, OpenViking). Fully local by default. Token-capped at ~650 tokens always-in-context.
+- **EverMemOS** (EverMind-AI, arXiv 2601.02163) — engram-inspired lifecycle (MemCell → MemScene → User Profile). SOTA on LoCoMo (93%) and LongMemEval. Hybrid retrieval (Elasticsearch BM25 + Milvus vectors + RRF + LLM-guided multi-round). Foresight signals carry explicit validity intervals. Heavy infrastructure (~2-4 GB additional RAM for Elasticsearch + Milvus).
+- **Obsidian vault** — markdown filesystem + kepano/obsidian-skills (Steph Ango / Obsidian CEO's own skill set, native Hermes integration). Maximum operator auditability, full git versioning, NDA-safe.
+- **Codebase-Memory MCP** (arXiv 2603.27277) — Tree-Sitter AST knowledge graph, 66 languages, single statically-linked C binary + SQLite. 14 structural query tools via MCP. 83% answer quality vs file-exploration agents at 10x fewer tokens.
+- **Redis** — hot operational state for financial pipeline (sub-10ms tick data, position state). No question on this — it goes in when L1 lands with the financial pipeline.
+
+Also surveyed but not adopted: Subquadratic SubQ (closed weights, cloud-only, recent prior-art skepticism around subquadratic architectures); TSTorch (Kulshrestha + Chong, student project, not publicly released).
+
+**Operator principle locked in this session:** *build it right the first time, not "good enough until it breaks."* In agentic work, the cost of memory failure shows up in the operator's pocket — trade decisions on stale L7 state, agent procedures diverging from vault notes, code knowledge going stale across L3/L5. This rules out the original "defer EverMemOS until the financial pipeline forces it" framing. EverMemOS lands in phase 1 build, not as a future upgrade.
+
+### Four-layer architecture (designed, not yet doctrine)
+
+The seven-technology list collapses to four conceptual layers under the elegance test:
+
+| Layer | Role | Members |
+|---|---|---|
+| **Truth** | Authoritative state. Written by operators and pipelines. | Repositories (code), Postgres (data), Obsidian vault (knowledge), Redis (live operational state) |
+| **Index** | Derived views over Truth. Written by re-indexers. | pgvector (semantic), Codebase-Memory MCP (AST graph), Hermes session search (FTS5) |
+| **Memory** | Agent and world models built from Truth over time. Written by agents. | Hermes (working memory, skills, preferences) + EverMemOS (long-horizon temporal state, Foresight) |
+| **Arbiter** | Routes questions to the right layer. Observes everything. Writes nothing. | Jarvis |
+
+**Single conflict-resolution rule: Truth is primary, everything else is derived.** Operator preferences = vault is Truth; Hermes USER.md auto-syncs from vault. Stable procedures = Hermes skill is Truth. Code = repository is Truth; L3 and L5 are derived. Current operational state = Postgres/Redis is Truth; EverMemOS never claims to know current state, only historical evolution.
+
+Jarvis's role under this model is cleaner than the v20 framing: route questions to the right layer based on what's being asked (not which tool was queried first), observe each layer's health, surface anomalies. Memory→Memory autonomous writes are inherently low-stakes and don't gate under authority spec. Memory→Truth writes are gated under existing Decision 5 N=12 framework.
+
+The v20 truth hierarchy (disk > git > jarvis-q > github > doc > chat) governs **current-state checks**. The Truth layer governs **durable knowledge home**. Different questions, both correct, no competition. The Obsidian vault is the eventual home for what master_summary represents; v20 was the consolidation step that made the doctrine vault-ready.
+
+### Cardinal Decision amendments required (pending next session)
+
+The four-layer architecture supersedes two closed Cardinals. Both need explicit amendment commits, not silent rewrites:
+
+- **Decision 2 reframe.** Pattern B (parallel to n8n, do not migrate cron workflows), Curator scoped narrowly or disabled (operator-explicit skill promotion, no automatic), memory writes initially gated through validation gate (Memory→Truth gating), routed via DeepSeek V4 Flash initially (cost discipline) — all constraints transfer. Only the artifact changes: Nous Research's Hermes Agent replaces the bespoke "Hermes layer" framing. Audit A7 closes simultaneously.
+
+- **Decision 6 scope amendment.** Nexus (codebase memory) and 2nd Brain (knowledge layer) move from "design-only / deferred" to phase 1.5 build targets. This is the largest doctrine change of the session and is driven explicitly by the build-it-right operator principle, not by new evidence about the original scope decision. The v19 framing was correct under cost-driven assumptions; it is no longer correct under quality-driven assumptions.
+
+### Phase 1.5 build sequence (locked, awaits Claude Code)
+
+1. **Vault initialization first.** Initialize Obsidian vault. Doctrine migrates in immediately: master_summary_v20, AUTHORITY_SPEC_v19, DECISIONS_v19, REBALANCE_v19, BIBLE_AUDIT_findings, HANDOFF_v19. This is the operator's existing "2nd Brain in scattered form" gaining a coherent home. Hermes (later in sequence) lands into a rich existing context rather than starting empty.
+2. **pgvector enable.** One `CREATE EXTENSION vector;` against existing Postgres. Zero new infrastructure. Unblocks semantic search over vault + code + news corpus.
+3. **Codebase-Memory MCP deploy.** Single C binary + SQLite, MCP-native, immediately consumable by Claude Code and (later) Hermes. File watcher handles incremental re-indexing.
+4. **Hermes Agent adoption.** Install per `curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash`. Configure with Curator disabled, memory writes gated, kepano/obsidian-skills installed pointing at the vault from step 1.
+5. **EverMemOS deploy.** Self-hosted with Elasticsearch + Milvus alongside existing Postgres. Seeded from vault profile. Begins MemCell formation on subsequent agent conversations.
+6. **Redis** — joins with financial pipeline build (phase 2 or later).
+
+### Numeric updates pending against v20
+
+- **§2 RAM budget.** Steady-state climbs from ~41 GB to ~44-46 GB (Elasticsearch ~1-2 GB + Milvus ~500 MB-2 GB; Redis ~200-500 MB joins later). "~55 GB free at idle" claim drifts to ~50 GB free at idle. Comfortable headroom maintained inside 96 GB.
+- **§11.5 headroom disposition.** D5 still answerable in next session; affects T6 burst-vs-T1-restore-vs-T4-up-vs-Whisper-preload-vs-second-T6 allocation of ~7.5-8.5 GB freed slack.
+- **§16 audit closures.** D1, D2, D3, D4 close. NEW-v20-1, NEW-v20-2, NEW-v20-6, NEW-v20-7, A5, A7 all close with this session.
+
+### New doctrine document pending
+
+**`MEMORY_ARCHITECTURE_v20.md`** — single standalone doc paralleling AUTHORITY_SPEC's role. Contents: four-layer model with definitions, Truth-is-primary as single conflict-resolution rule, routing table (operator question → which layer), primary-author table per content type, Memory→Memory autonomous / Memory→Truth gated distinction, vault-as-identity-Truth, operator-explicit skill promotion (no N-uses counter), Jarvis observation surface per layer, build sequence.
+
+### Carried open items into next session
+
+- **D5** — §11.5 headroom disposition (answerable now, ~10-15 min conversation)
+- **D6** — Decision 3 (T6 defaults) still blocked on 21 GB model download + R2 measurement + `~/bin/t6-up`/`~/bin/t6-down` tooling
+- **R2 measurement** — T1 ctx 36K → 24K patched in `c0f7ea7` 2026-05-20; awaits next natural T1 restart for VRAM delta confirmation. Path B means T1 survives all dataplane cycles by design — fires on reboot or explicit control-session kill.
+- **Cardinal Decision amendment commits** — D2 reframe + D6 scope expansion, landed atomically with `MEMORY_ARCHITECTURE_v20.md`
+- **`MEMORY_ARCHITECTURE_v20.md`** — first writing task next session
+- **Audit closures** in §16 — apply once doctrine doc lands
+- **Phase 1.5 build** in Claude Code, in the locked order above
+
+### Next-session orientation
+
+Open with D5 headroom disposition (fast). Then write `MEMORY_ARCHITECTURE_v20.md` as a single doctrine doc. Land the D2 + D6 amendments to v20 atomically with it. Update §2 RAM budget and §16 audit closures. Then move to Claude Code for Phase 1.5 build execution starting with vault initialization. Total remaining design work: ~1-2 hours of focused doctrine-writing, no more substantive decisions.
+
+The doctrine layer remains the single source of truth across files. The four-layer memory architecture is the natural completion of patterns v20 already established — not a graft. The Arbiter role was always Jarvis; the new doctrine just names the addressees.
+
+---
+
 Built across one long session: Step 1 hygiene → Jarvis v0.1 deploy → v0.1 deadlock discovered via telemetry → v0.2 rewrite with snapshot/queue → soak verified → 80% target view added → 5.5 GB phi-4 cache reclaimed.
 
 The single most consequential finding: the hardware feels useless because v18 sized standard mode for the loading screen, not for use. Jarvis made this visible. v19 doctrine is mostly about giving each tier a job that matches the actual workload distribution.

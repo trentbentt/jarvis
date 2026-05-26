@@ -441,6 +441,149 @@ The doctrine layer remains the single source of truth across files. The four-lay
 
 ---
 
+## Session 2026-05-26 (evening) — D5 + D3 close; Phase 18 voice doctrine
+
+### What happened
+
+Picked up from the 2026-05-26 memory architecture session with D5 headroom
+disposition as the only substantive doctrine decision still open per HANDOFF.
+Worked through D5, caught a Hard Constraint conflict in D3's prior framing,
+and closed both cardinals atomically. All six cardinals now carry a closed
+status — though D2 and D6 each carry an amendment flag against the Phase 1.5
+build (see cardinal status table below).
+
+**Operator framings locked this session:**
+
+- T6 targets 50-60% expert offload at ~100 tok/s. T6 is a reserve coder —
+  primary coding routes to Claude Pro ×2 and Kimi K2.6; T6 is the local
+  backup for can't-wait, NDA-tagged, or low-level missions where remote
+  routing is unsuitable. Not optimized for throughput; optimized for
+  availability.
+- T1 context is uncapped. Allocated dynamically up to available VRAM.
+  Cascade manages pressure by evicting burst tiers (T2 typically idle,
+  T6 burst-only) before T1 is touched. Change 2's 24K patch lands as the
+  post-restart starting point; runtime context is not statically capped.
+  Hard Constraint #1 governs: T1 self-offloads to RAM/CPU only via
+  Substrate Pressure Cascade (§10.3), never evicted by anything below as
+  a first resort.
+- Phase 18 `whisper` tmux session on monarch clarified: this is the Phase 18
+  voice-to-voice STT component (preparatory), not Phase 17.5 dictation
+  (MacBook-resident). Distinct subsystems sharing only the physical
+  microphone.
+- Phase 18 value proposition sharpened: conversational access to Jarvis's
+  full codebase understanding (L5 Codebase-Memory MCP), doctrine (L6 vault),
+  live system state (Phase 2 listeners), git history, and agent procedures
+  (L4 Hermes skills) — operator doesn't need to be in the weeds of files.
+  Maps to §3.2 architectural test question four ("Can Jarvis explain it?")
+  and §3.1 documentation router role.
+
+**D5 CLOSED.** §11.5, §5.6, §4.1, §14.3 patched atomically. Four anchors,
+four patches, all landed cleanly. Phase 18 architecture block added with
+STT/TTS halves, ChatterBox (Resemble AI, Apache 2.0) named as TTS candidate
+(doctrinal placeholder, not hard commitment). Combined Phase 18 VRAM footprint
+~1.5-3 GB burst-shaped; comfortable inside standard headroom.
+
+**D3 CLOSED (commit 1ac1dad).** §9.3 rewritten from BLOCKED to CLOSED.
+Original proposed statement (25% offload, three named modes —
+comfort/conservative/aggressive) superseded by D5. The three-mode framing
+depended on "parks T1" language which conflicted with Hard Constraint #1 —
+caught at doctrine-vs-doctrine cross-reference walk, not at execution.
+Execution items (model download, spin-up tooling, first-deploy VRAM
+verification) moved to §16.6 E3; D3 doctrine is clean. §16.2 D3 row
+checkmarked; §16.6 E3 row updated to drop D3 prereq.
+
+**M19 banked.** Method note added to §16.7: when closing a cardinal that
+affects tier allocation, walk Hard Constraints + Substrate Pressure Cascade
+as a cross-reference check before drafting the closure statement. Doctrine
+layer caught the D3 conflict; execution layer would have caught it later and
+more expensively. `.gitignore` updated with `*.D3-close-backup` pattern.
+
+### Session commit trail
+
+Run `git log --oneline | head -6` to verify hashes. Three commits landed:
+1. `master_summary_v20: close D5 + Phase 18 voice doctrine`
+2. `master_summary_v20: close D3 (T6 defaults superseded by D5)` — `1ac1dad`
+3. `doctrine: bank M19 method note (D3 closure lesson); .gitignore D3-close-backup`
+
+### State of the six cardinals post-session
+
+| # | Decision | Status |
+|---|----------|--------|
+| 1 | Architectural reframe | CLOSED 2026-05-19 |
+| 2 | Hermes adoption shape | CLOSED 2026-05-26 — **amendment expected at P1.5-4 Hermes install** |
+| 3 | T6 operational defaults | CLOSED 2026-05-26 |
+| 4 | Cloud routing chain | CLOSED 2026-05-19; amended 2026-05-24 |
+| 5 | Jarvis authority model | CLOSED 2026-05-24 |
+| 6 | v19 scope | CLOSED 2026-05-19; amended 2026-05-26 — **second amendment expected at P1.5-1 vault init** |
+
+All six cardinals carry a closed status for the first time in the v19/v20
+lifecycle. D2 and D6 are flagged for amendment commits as Phase 1.5 build
+surfaces doctrine gaps — this is expected and not a reopen in the cardinal
+sense; it is the same pattern as Decision 4's two amendment commits.
+
+**D2 amendment surface (P1.5-4 Hermes install):** MEMORY_ARCHITECTURE_v20.md
+§15 items that require doctrinal choice rather than implementation choice:
+USER.md auto-sync mechanism specifics (standalone watcher vs Codebase-Memory
+file watcher piggyback vs Hermes cron skill), skill promotion ritual mechanics
+(script vs operator-direct), Telegram/Signal gateway enablement decisions.
+Any of these that resolve as doctrine land atomically with the install commit.
+
+**D6 amendment surface (P1.5-1 vault init):** MEMORY_ARCHITECTURE_v20.md §15
+items 1 (vault structure: single vs per-project, NDA isolation pattern) and 7
+(multi-device sync: vault on monarch only vs MacBook sync). Both are
+doctrine-grade calls that must land in v20 + MEMORY_ARCHITECTURE_v20.md
+atomically with the vault initialization commit per §0.1 rule 4.
+
+### Open items carried forward
+
+- **R2 measurement** — T1 ctx 24K patch in code since `c0f7ea7`; VRAM delta
+  pending next natural T1 restart. Path B means T1 survives dataplane cycles;
+  fires on reboot or explicit control-session kill.
+- **Doc cleanups** — C1 (CLAUDE.md rewrite per A3 + NEW-v20-4 + venv naming
+  lesson from 2026-05-26 method note), C2 (README v20-aware), C3
+  (ref-blueprint §Phase 15), C4 (six per-stack CONTEXT.md updates), C5
+  (single-line fixes per A12/A13/NEW-v20-5). All low-effort; C1 highest
+  priority since the venv misnomer catches Claude Code cold every session.
+- **Phase 1.5 build** — vault init → pgvector → Codebase-Memory MCP →
+  Hermes Agent → EverMemOS → Redis. All pending Claude Code execution.
+  Locked order per MEMORY_ARCHITECTURE_v20.md §12.
+- **Phase 2 listeners** — process.py (no prereqs, buildable today), quota.py
+  (doctrine-unblocked since 2026-05-24), cron.py, memory.py (spec in
+  MEMORY_ARCHITECTURE_v20.md §10.2).
+- **E3** — T6 spin-up tooling + first-deploy VRAM verification. After model
+  download (~21 GB). No doctrine blockers remaining.
+
+### Recommended next-session opening
+
+**If memory architecture build is the priority:** Open with the
+MEMORY_ARCHITECTURE_v20.md §15 doctrine gap walk (~15-20 min) covering items
+1 (vault structure), 3 (pgvector scope), 4 (skill promotion ritual), 7
+(multi-device vault sync). These are fast decisions that must land in doctrine
+before P1.5-1 vault init disk writes begin per §0.1 rule 4. Then move to
+Claude Code for P1.5-1 execution. D6 amendment commit lands atomically with
+vault init.
+
+**If Phase 2 listener completeness is the priority:** process.py directly in
+Claude Code. No prereqs, no doctrine gaps, ~2-3 hr mission. BaseListener
+pattern established; reuses vram.py PID-resolution utilities; spec is
+complete in master_summary_v20.md §12.4.
+
+C1 (CLAUDE.md rewrite) is a 30-min standalone that pays for itself on the
+first Claude Code session it prevents from hitting the venv-misnomer error.
+Worth doing as a warm-up before either main thread.
+
+### Backup files on disk (not in repo)
+
+- `master_summary_v20.md.D5-backup`
+- `master_summary_v20.md.D3-close-backup`
+- `master_summary_v20.md.M19-backup`
+- `HANDOFF_v19.md.session-20260526-evening-backup`
+
+Safe to remove after next successful cold cycle confirms no regression.
+
+
+---
+
 Built across one long session: Step 1 hygiene → Jarvis v0.1 deploy → v0.1 deadlock discovered via telemetry → v0.2 rewrite with snapshot/queue → soak verified → 80% target view added → 5.5 GB phi-4 cache reclaimed.
 
 The single most consequential finding: the hardware feels useless because v18 sized standard mode for the loading screen, not for use. Jarvis made this visible. v19 doctrine is mostly about giving each tier a job that matches the actual workload distribution.

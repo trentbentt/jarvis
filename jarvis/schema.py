@@ -346,7 +346,6 @@ class ComponentHealth(BaseModel):
 class Health(BaseModel):
     components: List[ComponentHealth] = Field(default_factory=list)
     last_full_sweep: Optional[datetime] = None
-    sweep_interval_sec: int        = 30
 
 
 # ─── Top-level SystemModel ────────────────────────────────────────────────────

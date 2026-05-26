@@ -163,7 +163,33 @@ class StateStore:
             return None
         try:
             data = json.loads(STATE_PATH.read_text())
-            return SystemModel.model_validate(data)
+            model = SystemModel.model_validate(data)
+            # ── Orphan-key prune (D1) ─────────────────────────────────────
+            # quotas.quotas is Dict[str,CloudQuota] — Pydantic extra="ignore"
+            # does not prune dict-value keys. Prune any key outside the
+            # canonical set so runtime always matches _build_initial_model().
+            # schema_version is a label field only (D4); no transforms run.
+            canonical_quota_keys = {
+                "claude_pro_1", "claude_pro_2",
+                "deepseek_v4_flash", "kimi_k2_6",
+                "anthropic_api_direct",
+            }
+            orphans = set(model.quotas.quotas.keys()) - canonical_quota_keys
+            if orphans:
+                logger.info("load_from_disk: pruning orphan quota keys: %s", sorted(orphans))
+                for k in orphans:
+                    del model.quotas.quotas[k]
+            # Hydrate any canonical keys missing from state.json (e.g. after
+            # a provider rename — deepseek_v3 → deepseek_v4_flash). Uses
+            # _build_initial_model() defaults so hydrated rows match cold-start.
+            missing = canonical_quota_keys - set(model.quotas.quotas.keys())
+            if missing:
+                fresh = cls._build_initial_model()
+                for k in missing:
+                    logger.info("load_from_disk: hydrating missing quota key: %s", k)
+                    model.quotas.quotas[k] = fresh.quotas.quotas[k]
+            # ── End orphan-key prune ──────────────────────────────────────
+            return model
         except Exception as e:
             logger.error("Failed to parse state file: %s", e)
             return None

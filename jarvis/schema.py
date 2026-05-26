@@ -356,6 +356,8 @@ class SystemModel(BaseModel):
     Written to ~/.local/state/jarvis/state.json every 30s by the daemon.
     Read by jarvis-q CLI and (eventually) the Jarvis decision engine.
     """
+    # Label field only — read by humans and logs, never acted on by migration
+    # logic. Cold-cycle discipline is the migration strategy for this stack. (D4)
     schema_version: str     = "0.1.0"
     hardware: Hardware      = Field(default_factory=Hardware)
     tiers: Dict[str, Tier]  = Field(default_factory=dict)

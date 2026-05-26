@@ -466,16 +466,20 @@ Four closed (1, 4, 5, 6), one open (2), one blocked (3).
 
 **Closure simultaneous with audit A7** (Hermes brainstorm absent from disk, confirmed 2026-05-26). §13 below carries the operational detail.
 
-### §9.3 Decision 3 — T6 Operational Defaults (BLOCKED)
+### §9.3 Decision 3 — T6 Operational Defaults (CLOSED 2026-05-26)
 
-**Proposed statement (not closed).** Qwen3.6-35B-A3B UD-Q4_K_XL, 25% expert offload, 64K context, three named modes (comfort / conservative / aggressive).
+**Statement.** Qwen3.6-35B-A3B UD-Q4_K_XL, 64K context, single operating mode: 50-60% expert offload targeting ~100 tok/s throughput with `--cache-type-k q8_0`. Actual VRAM footprint pending measurement at download — projected ~14-17 GB range.
 
-**Blocked on:**
+**Role (per Decision 1 + D5 §11.5).** Reserve coder. Primary coding workloads route to Claude Pro ×2 (operator-driven, building/design) and Kimi K2.6 (peer rotation per Decision 4). T6 is the local backup for can't-wait missions, NDA-tagged work where cloud routing is disallowed, or low-level coding tasks where the spin-up cost is acceptable. The ~100 tok/s target reflects this — T6 is not optimized for raw throughput; it is the overflow valve when remote isn't an option.
+
+**Closure path.** The original proposed statement (25% offload, three named modes — comfort / conservative / aggressive) was superseded by D5 §11.5 close. The three-mode framing depended on "parks T1" language under tight VRAM, which conflicts with Hard Constraint #1 (T1 never evicted by anything below it as a first resort; T1 self-offload only via Substrate Pressure Cascade per §10.3). Single mode at 50-60% offload removes the need for mode-switching entirely — the cascade handles VRAM pressure dynamically per §10, evicting T2 (typically idle) and stepping T4 down before T1 is touched.
+
+**Execution items (not doctrinal — tracked in §16.6 E3):**
 1. Model not downloaded. ~21 GB pull required.
 2. Spin-up tooling not written. `~/bin/t6-up` and `~/bin/t6-down` don't exist yet.
-3. Rebalance Change 2 measurement not landed (§11.2). Need to confirm post-Change-2 baseline absorbs T6 burst (~17-19 GB partial offload, or ~21 GB pure-VRAM mode) under one of the three modes.
+3. First-deploy verification: measured VRAM footprint vs ~14-17 GB projection; cascade arithmetic of §10.1 confirmed against actual numbers.
 
-**Mode shapes:** Comfort mode parks T1 and runs T6 burst-up under tight VRAM. Conservative mode requires T2 + T4 down. Aggressive mode pushes expert offload higher with quality tradeoffs.
+**Re-open conditions.** Measured T6 footprint at 50-60% offload meaningfully above ~17 GB (would force T4 step-down by default rather than as exception); ~100 tok/s target proves unmet at projected offload ratio (suggests offload ratio needs adjustment); operator preference shifts T6 from reserve to primary coder role (would re-justify higher-throughput tuning).
 
 ### §9.4 Decision 4 — Cloud Routing Chain (CLOSED 2026-05-19; amended 2026-05-24 v1 + v2)
 
@@ -1135,7 +1139,7 @@ The two layers are complementary. Doctrine answers "what phase are we in, what's
 | # | Decision | Status | Blocked on |
 |---|---|---|---|
 | D2 | Hermes adoption shape | ✅ CLOSED 2026-05-26 | Reframed against Nous Research Hermes Agent artifact. Audit A7 closed simultaneously. See §9.2. |
-| D3 | T6 operational defaults | BLOCKED | 21 GB model download · `~/bin/t6-up` / `~/bin/t6-down` tooling · Rebalance Change 2 measurement (R2). |
+| D3 | T6 operational defaults | ✅ CLOSED 2026-05-26 | Operating mode resolved by D5 §11.5 closure. Execution items (model download + spin-up tooling) moved to §16.6 E3. See §9.3. |
 
 ### §16.3 Rebalance state
 
@@ -1171,7 +1175,7 @@ The two layers are complementary. Doctrine answers "what phase are we in, what's
 |---|---|---|
 | E1 | Financial pipeline strategy doc + phase-level design | `FINANCIAL_STRATEGY_v19.md` proposed; answer §8 strategy questions first |
 | E2 | Hermes / Pattern B implementation | After D2 |
-| E3 | T6 spin-up tooling | After D3 + model download + R2 |
+| E3 | T6 spin-up tooling + first-deploy VRAM verification | After model download (~21 GB). Doctrine complete per D3/D5 close 2026-05-26; first deploy verifies measured footprint vs ~14-17 GB projection and cascade arithmetic of §10.1. R2 measurement independent (T1 context savings) — not a T6 prereq. |
 | E4 | Nexus 17.1 design phase | Per Decision 6, design-only in v19 |
 | E5 | LoRA training (content + leads only; three high-stakes deferred per Decision 1) | Validation gate live + ≥1 week telemetry baseline |
 | E6 | Improvement ledger service | Validation gate live |

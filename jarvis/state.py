@@ -232,11 +232,9 @@ class StateStore:
                 period="monthly", budget_usd=10.0,
                 used_usd=0.0, status=QuotaStatus.OK,
             ),
-            "haiku_4_5": CloudQuota(
-                name="haiku_4_5", provider="anthropic",
-                period="monthly", budget_usd=15.0,
-                used_usd=0.0, status=QuotaStatus.OK,
-            ),
+            # vestigial — Decision 4 v2; emergency rung for NDA / money-on-line work.
+            # Not yet wired through LiteLLM. Kept as a forward-compat hook;
+            # see master_summary_v20.md §9.4 + §16.4 (NEW-v20-7).
             "anthropic_api_direct": CloudQuota(
                 name="anthropic_api_direct", provider="anthropic",
                 period="monthly", budget_usd=None,

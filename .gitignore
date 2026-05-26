@@ -27,3 +27,4 @@ daemon.log
 *.preB-backup
 *.zombie-fix-backup
 *.preB-section-backup
+*.D3-close-backup

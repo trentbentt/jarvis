@@ -1219,6 +1219,7 @@ The two layers are complementary. Doctrine answers "what phase are we in, what's
 | M16 | Working-directory enforcement (no agent writes outside scope) — designed v14, not enforced by harness | v14-era | Open; becomes load-bearing with Nexus |
 | M17 | Quarterly CUDA pin verification SOP | 2026-05-16 | Operational discipline; calendar reminder |
 | M18 | n8n encryption key rotation cadence | n/a | Bank — no documented policy |
+| M19 | D3's original "parks T1" / three-mode framing inadvertently conflicted with Hard Constraint #1 (T1 never evicted by anything below as first resort). Caught at doctrine-vs-doctrine cross-reference walk during D5 close, not at execution. | 2026-05-26 | Method note — when closing a cardinal that affects a tier's allocation, walk Hard Constraints + Substrate Pressure Cascade as a cross-reference check before drafting the closure statement. Doctrine layer caught it; execution layer would have caught it later and more expensively. |
 
 ### §16.8 Gaps this document does not authoritatively cover
 

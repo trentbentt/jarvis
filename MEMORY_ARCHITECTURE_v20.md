@@ -37,6 +37,10 @@ Memory failures in agentic work surface as financial loss, not as quality regres
 
 **The seven-technology landscape collapses to four conceptual layers under the elegance test.** Postgres + Redis + repositories + vault are all Truth in different shapes. pgvector + Codebase-Memory MCP + Hermes session search are all Index in different shapes. Hermes Agent and EverMemOS are both Memory in different shapes (working vs long-horizon). Jarvis is the only Arbiter. Seven addressable components, four doctrinal roles, one conflict-resolution rule. That's the elegance test passing.
 
+**Scope of the build-it-right principle.** Applies to memory architecture correctness — layer model, conflict-resolution rule, primary-author assignments, Truth-is-primary discipline. Does not extend to speculative content-scope features whose absence can be added as additive layers rather than rebuilds. NDA isolation is the canonical example: its absence at install does not compound silently into agentic memory failure, so deferring it is a YAGNI call rather than a build-it-right violation. (Clarification added 2026-05-26 from §15 Item 1 walk.)
+
+**Vault hygiene principle.** The vault's value derives from being a high-quality documentation graph — not from comprehensive capture. Folders, templates, or capture conventions that lower friction at the cost of accumulating unprocessed or low-quality content are rejected. Garbage-in produces garbage-out in agent retrieval: low-quality vault content gets embedded by L3, surfaced by L4 retrieval, and treated as Truth by downstream agents — silently degrading every layer above. Four PARA-style additions were evaluated and rejected at install (inbox, templates, journal, people); the rejection is recorded here so it isn't relitigated. (Principle added 2026-05-26 from §15 Item 1 walk.)
+
 ---
 
 ## §3 — The Four Layers

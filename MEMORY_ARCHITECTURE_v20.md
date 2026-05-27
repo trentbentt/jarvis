@@ -660,7 +660,7 @@ The locked Phase 1.5 sequence per master_summary_v20.md §16.6 Tier E. Each step
 
 **Exit criteria.** `~/vault/` exists, git-initialized, with initial commit containing migrated doctrine, an `operator.md` identity file, and a clear subfolder structure. `kepano/obsidian-skills` cloned into project-level skill paths for downstream Hermes use.
 
-**Vault structure decision deferred to build time.** Single vault vs per-project, NDA isolation pattern, subfolder hierarchy — all decided by operator at initialization with Claude Code assistance.
+**Vault structure resolved 2026-05-26.** See §7.6 and §15 Item 1: single monolithic `~/vault/` on monarch's NVMe; doctrine-first hierarchy with `final_master_summary.md`, `final_memory_architecture.md`, `final_handoff.md` at root; `projects/` for per-subsystem docs; `archive/` for superseded versions; no PARA additions; NDA isolation deferred as future amendment per build-it-right scope clarification (§2). Multi-device sync resolved per §15 Item 7: monarch is sole Truth, MacBook accesses remotely via SSH/Tailscale. Implementation-grade choices (SSH-terminal-only vs Tailscale-mounted Obsidian UI) deferred to P1.5-1 build time.
 
 ### §12.2 Step 2 — pgvector enable
 
@@ -668,7 +668,7 @@ The locked Phase 1.5 sequence per master_summary_v20.md §16.6 Tier E. Each step
 
 **Prereqs.** Step 1 (vault exists so we can embed vault notes).
 
-**Exit criteria.** `CREATE EXTENSION vector;` succeeds against existing Postgres. Embedding model selection ratified (likely T5 for small/medium, cloud for large). Initial embeddings populated for vault notes. `jarvis-q` or simple SQL query verifies vector search works end-to-end.
+**Exit criteria.** `CREATE EXTENSION vector;` succeeds against existing Postgres. Embedding model selection ratified (likely T5 for small/medium, cloud for large). **Install scope per §7.3 and §15 Item 3 closure: vault notes only at install** — code chunks and news corpus require explicit expansion ritual (justification → quality gate → atomic landing → post-deploy validation) per §7.3. Initial embeddings populated for vault notes. `jarvis-q` or simple SQL query verifies vector search works end-to-end.
 
 ### §12.3 Step 3 — Codebase-Memory MCP deploy
 
@@ -747,21 +747,21 @@ Specific to this surface, not duplicating master_summary_v20.md §17.
 
 ## §15 — Open Items (Doctrine Gaps)
 
-Things this document does not yet authoritatively cover. Build-implementation detail belongs in master_summary_v20.md §16.6 Tier E (Phase 1.5 queue); this list is purely doctrine gaps.
+Things this document does not yet authoritatively cover. Build-implementation detail belongs in master_summary_v20.md §16.6 Tier E (Phase 1.5 queue); this list is purely doctrine gaps. **Update 2026-05-26:** Items 1, 3, 4, 7 closed in this session's §15 walk and now carry resolution cross-references. Items 2, 5, 6, 8, 9, 10 remain open.
 
-1. **Vault structure decision.** Single vault vs per-project. Subfolder hierarchy. NDA isolation pattern. Resolution: at Phase 1.5 step 1 build time, operator decides.
+1. **Vault structure decision.** ✅ CLOSED 2026-05-26 from this session's §15 walk. Resolution per §7.6: single monolithic `~/vault/`, monarch-only Truth, doctrine-first hierarchy with `final_master_summary.md` at root, projects as children under `projects/`, no PARA additions, NDA isolation deferred as future amendment.
 
 2. **pgvector embedding model decision.** T5 local vs cloud embeddings vs mixed. Resolution: at Phase 1.5 step 2 build time, after measurement of T5 throughput on embedding workloads.
 
-3. **pgvector scope decision.** What gets embedded at install? Vault notes only, or also code chunks, or also news corpus. Resolution: at Phase 1.5 step 2 build time.
+3. **pgvector scope decision.** ✅ CLOSED 2026-05-26 from this session's §15 walk. Resolution per §7.3: vault notes only at install; code chunks and news corpus require explicit expansion ritual (4-step pattern: justification → quality gate → atomic landing → post-deploy validation).
 
-4. **Skill promotion ritual mechanics.** Script vs Hermes skill vs operator-direct edit. Resolution: at Phase 1.5 step 4 build time.
+4. **Skill promotion ritual mechanics.** ✅ CLOSED 2026-05-26 from this session's §15 walk. Resolution per §8.4: draft-state pattern. Hermes autonomously drafts skill candidates to `~/.hermes/skill-drafts/`; operator approves via `approve-draft` (Hermes skill + bin script hybrid); operator-direct promotion of vault notes via `promote-skill`. Curator-the-grader remains disabled.
 
 5. **External provider re-enablement pattern.** If a provider does eventually justify re-enablement, what's the decision shape? Resolution: when first provider is proposed.
 
 6. **EverMemOS Foresight signal consumption by trading pipeline.** Read-only consumption pattern, frequency, gating. Resolution: when financial pipeline build starts (E1 in master_summary_v20.md §16.6).
 
-7. **Multi-device vault sync.** Does the vault live on monarch only, or sync to MacBook? Resolution: at Phase 1.5 step 1 build time.
+7. **Multi-device vault sync.** ✅ CLOSED 2026-05-26 from this session's §15 walk. Resolution per §7.6: monarch is the sole Truth location; no replication; MacBook accesses remotely via SSH/Tailscale. Truth-singularity preserved by construction. Implementation choice (SSH-terminal-only vs Tailscale-mounted filesystem for Obsidian UI) deferred to P1.5-1 build time.
 
 8. **Cross-layer event coordination.** When Codebase-Memory detects a code rename, does it notify Hermes (so skills referencing the old name can be flagged)? Doctrine pattern needed if cross-layer event surfaces become load-bearing. Resolution: deferred to first concrete need.
 

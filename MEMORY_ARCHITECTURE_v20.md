@@ -210,7 +210,7 @@ Per content type, exactly one layer owns writes. This is the conflict-prevention
 | Operator identity / preferences | L6 vault — `<vault>/operator.md` | L4 USER.md (auto-sync), L7 user profile (seeded) | Operator-direct edit (Tier 0 — outside Jarvis authority surface) |
 | Architectural decisions (e.g., this doc) | L6 vault | None | Operator-direct edit; agents propose via Tier 3 |
 | Project doctrine (CONSTITUTION.md, CONTEXT.md) | L6 vault | None | Operator-direct edit; agents propose via Tier 3 |
-| Stable reusable procedures | L4 Hermes skill (`~/.hermes/skills/`) | L6 vault pointer notes | Operator-explicit promotion (Tier 3); Curator disabled |
+| Stable reusable procedures | L4 Hermes skill (`~/.hermes/skills/`) | L6 vault pointer notes; Hermes drafts at `~/.hermes/skill-drafts/` per §8.4 | Operator approval (Tier 3) of Hermes-drafted candidates via `approve-draft` OR operator-direct promotion via `promote-skill`; Curator-the-grader disabled |
 | Exploratory / project-specific procedures | L6 vault note | None | Operator-direct edit |
 | Code | Repository file on disk | L3 pgvector embeddings; L5 Codebase-Memory AST nodes | Operator-direct via git; agents commit via authority-gated PRs |
 | News corpus | L2 Postgres (`news_unified`, etc.) | L3 pgvector embeddings | Pipeline-write (n8n cron); agents read-only |
@@ -413,7 +413,7 @@ The Curator is Hermes's autonomous skill grading and library consolidation loop.
 **On monarch, Curator is disabled at install.** Concretely:
 
 - The cron entry that runs the Curator loop is not enabled in Hermes config
-- Hermes's autonomous skill creation hook (which fires after multi-step task completions) is disabled or routed to a "draft" state requiring operator review
+- Hermes's autonomous skill creation hook (which fires after multi-step task completions) is **routed to the draft-state pattern below** (closure 2026-05-26 from §15 Item 4 walk) — operator approval required before promotion to Truth
 - Curator-related notification channels (skill quality alerts, deprecation suggestions) are off
 
 **Re-open conditions for enabling Curator:**
@@ -423,7 +423,39 @@ The Curator is Hermes's autonomous skill grading and library consolidation loop.
 3. Operator has reviewed the Curator's quality criteria and explicitly opted in
 4. The decision is logged as a new entry in master_summary_v20.md §16 with explicit rationale
 
-Until those conditions are met, all skill creation is operator-explicit per §8.3. This is the operationalization of the "Curator narrow-scope or disabled" constraint from the original v18-era Hermes brainstorm framing, applied to the actual Nous Research artifact.
+Until those conditions are met, all skill creation flows through the draft-state pattern (operator-approval-gated) per §8.3 and the spec below. This is the operationalization of the "Curator narrow-scope or disabled" constraint from the original v18-era Hermes brainstorm framing, applied to the actual Nous Research artifact.
+
+**Draft-state pattern (specified 2026-05-26 from §15 Item 4 walk).**
+
+*Draft location.* `~/.hermes/skill-drafts/<name>/SKILL.md` — sibling to `~/.hermes/skills/`. Separate directory so drafts are unambiguously not Truth. Any agent reading `~/.hermes/skills/` sees only approved skills; drafts only surface via explicit review tooling. No frontmatter-based draft/approved distinction inside the same directory.
+
+*Approval ritual.* `approve-draft <name>` — implemented as a Hermes skill (steady-state, conversational) and a bin script (bootstrap + pre-Hermes fallback) per the hybrid mechanism. Steps:
+
+1. Validate draft passes basic structure check (frontmatter complete, body non-empty)
+2. Move `~/.hermes/skill-drafts/<name>/` → `~/.hermes/skills/<name>/`
+3. Update frontmatter: add `approved_by: operator`, `approved_date: <ts>`, remove draft-status flag
+4. Commit the move in git as a single atomic operation
+5. Optionally add vault pointer note: "skill `<name>` promoted from Hermes-drafted candidate on `<date>`"
+
+*Two promotion paths coexist.* Both produce SKILL.md at `~/.hermes/skills/<name>/`:
+
+- *Draft approval path* — Hermes autonomously drafted; operator approves via `approve-draft`
+- *Operator-direct path* — operator notices a stable vault procedure worth promoting; runs `promote-skill <vault-path>` (Hermes skill + bin script hybrid) to generate SKILL.md from the vault note
+
+Bin script handles bootstrap (first `~/.hermes/skills/approve-draft/SKILL.md` and `~/.hermes/skills/promote-skill/SKILL.md` are hand-written; thereafter Hermes-skill path is canonical) and pre-Hermes fallback.
+
+*Draft TTL.* No auto-expiration — auto-deletion of Hermes-drafted work introduces a "Hermes deleted my draft before I could review it" failure mode worse than the graveyard problem. Instead: stale drafts (>30 days unreviewed, threshold tunable) surface as Tier 2 events via the future `memory.py` listener per §10.2. Operator decides per draft: approve, edit, or discard.
+
+*Review surface.* New `jarvis-q skill-drafts` CLI subcommand (modeled on `jarvis-q quotas`): lists pending drafts with name, age, source-of-draft (which conversation Hermes synthesized from, captured in SKILL.md frontmatter), and one-line description.
+
+*Authority gating for skill actions.* Operation-level tiers extending the §9.1 two-axis framing:
+
+| Action | Authority tier | Rationale |
+|---|---|---|
+| Hermes drafts candidate to `~/.hermes/skill-drafts/<name>/` | Tier 2 — autonomous-with-log | Draft is candidate, not Truth; surfaces via `jarvis-q skill-drafts` |
+| Operator runs `approve-draft <name>` | Tier 3 — operator-explicit | Promotes draft to Truth at `~/.hermes/skills/<name>/` |
+| Operator runs `promote-skill <vault-path>` | Tier 3 — operator-explicit | Direct vault-procedure promotion bypassing draft state |
+| Curator-the-grader autonomous consolidation/deprecation | Disabled | Per §8.4 re-open conditions (30 days + 12 promoted skills + opt-in) |
 
 ### §8.5 External memory providers — all disabled at install
 
@@ -541,7 +573,10 @@ Single listener `memory.py` (proposed name) joining the Phase 2 listener queue p
 
 ### §10.3 jarvis-q surface
 
-New CLI subcommand: `jarvis-q memory` — shows per-layer health and recent activity. Format mirrors `jarvis-q tiers` and `jarvis-q quotas`.
+New CLI subcommands:
+
+- `jarvis-q memory` — shows per-layer health and recent activity. Format mirrors `jarvis-q tiers` and `jarvis-q quotas`.
+- `jarvis-q skill-drafts` — lists pending Hermes-drafted skill candidates with name, age, source-conversation, and one-line description per §8.4 draft-state pattern. Surfaces stale-draft accumulation as Tier 2 events via the `memory.py` listener.
 
 ---
 
@@ -576,6 +611,8 @@ Already covered by existing operational discipline. Quarterly backup drill (last
 **Curator unexpectedly active.** Curator config has been disabled but somehow it's running (config drift, manual edit, version upgrade reset). Recovery: Jarvis observes via skill creation rate spike or Curator-specific events; surfaces as critical; operator disables and reviews any autonomously-created skills.
 
 **External provider unexpectedly active.** Similar pattern to Curator. Surface as critical; operator review.
+
+**Stale skill drafts accumulating.** Hermes-drafted skill candidates in `~/.hermes/skill-drafts/` linger without operator review per §8.4 draft-state pattern. Recovery: `memory.py` listener surfaces drafts older than 30 days (threshold tunable) as Tier 2 event with name, age, and one-line description; operator approves via `approve-draft`, edits the draft, or discards. No auto-deletion (preserves drafts against accidental loss while surfacing the graveyard risk).
 
 **MEMORY.md / USER.md drift from vault.** Auto-sync mechanism fails or runs slow; Hermes USER.md no longer reflects vault `operator.md`. Recovery: Jarvis observes USER.md vs vault `operator.md` mtime divergence; surfaces as Tier 2; operator triggers re-sync.
 
@@ -647,7 +684,7 @@ The locked Phase 1.5 sequence per master_summary_v20.md §16.6 Tier E. Each step
 
 **Prereqs.** Steps 1-3.
 
-**Exit criteria.** Hermes daemon running, accessible at its OpenAI-compatible endpoint, integrated into LiteLLM routing as a model alias or peer endpoint. `MEMORY.md`, `USER.md`, `SOUL.md` initialized. kepano/obsidian-skills installed. USER.md auto-sync from vault working. First operator-explicit skill promotion documented. Hermes added to `MONARCH_HEALTH_COMPONENTS`. Skill heuristic from §8.6 codified as initial Hermes skill.
+**Exit criteria.** Hermes daemon running, accessible at its OpenAI-compatible endpoint, integrated into LiteLLM routing as a model alias or peer endpoint. `MEMORY.md`, `USER.md`, `SOUL.md` initialized. kepano/obsidian-skills installed. USER.md auto-sync from vault working. First operator-explicit skill promotion documented. Hermes added to `MONARCH_HEALTH_COMPONENTS`. Skill heuristic from §8.6 codified as initial Hermes skill. **Draft-state pattern per §8.4 deployed:** `~/.hermes/skill-drafts/` directory created; Hermes autonomous skill-creation hook configured to route to drafts not skills; `approve-draft` and `promote-skill` skills bootstrapped (initial hand-written SKILL.md files); `jarvis-q skill-drafts` CLI subcommand stubbed (full implementation lands with `memory.py` listener).
 
 ### §12.5 Step 5 — EverMemOS deploy
 

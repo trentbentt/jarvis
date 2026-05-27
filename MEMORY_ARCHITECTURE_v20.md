@@ -265,6 +265,15 @@ For each of the seven physical members (L1 Redis through L7 EverMemOS), the on-d
 
 **Embedding model selection.** TBD at build time. T5 (always-on CPU tier, zero VRAM) is the natural local embedding server for small-to-medium jobs; larger jobs route to cloud via LiteLLM. Decision deferred to Phase 1.5 step 2 implementation.
 
+**Install scope (locked 2026-05-26 from §15 Item 3 walk).** Vault notes only at P1.5-2 install. Code chunks and news corpus are not embedded at install — each future corpus admitted to pgvector goes through the explicit expansion ritual below. This is the vault hygiene principle (§2) applied to the index layer: garbage embeddings degrade retrieval quality silently, and each corpus admitted imports its own quality profile.
+
+**Index expansion ritual (locked 2026-05-26).** Each corpus admitted to pgvector after install requires four steps:
+
+1. **Justification.** A concrete use case documented as a §16 open item in master_summary_v20.md: proposed corpus, primary consumer, expected retrieval pattern, why existing layers (L5 structural for code, raw Postgres queries for news) don't satisfy the need.
+2. **Quality gate.** Filtering rules specified before any embedding (e.g., for code: exclude `node_modules/`, build artifacts, generated files; for news: exclude stub-level articles, exclude degraded sources per master_summary_v20.md §16.7 M11).
+3. **Atomic landing.** Doctrine amendment patch to this §7.3 lands in the same commit as the indexer config change per master_summary_v20.md §0.1 rule 4.
+4. **Post-deploy validation.** Retrieval quality spot-checked on representative queries before the expansion is declared complete. If retrieval quality drops on existing corpora due to the new content, expansion is rolled back.
+
 **Jarvis observation.** Extension version query for liveness; index build time and retrieval latency as activity signals. Adds one row to `MONARCH_HEALTH_COMPONENTS` or piggybacks on existing Postgres check.
 
 **Authority concern.** None. Index layer. Re-indexers react to Truth; embeddings never modify source content.
@@ -297,13 +306,40 @@ For each of the seven physical members (L1 Redis through L7 EverMemOS), the on-d
 
 **Status.** Not built. Phase 1.5 step 1 — first step in the locked sequence because every downstream layer either reads from or seeds from the vault.
 
-**On-disk location.** TBD at vault initialization. Likely `~/vault/` with subfolder structure for doctrine, per-project notes, research, operator.md identity file. Git-versioned from initialization.
+**On-disk location.** `~/vault/` on monarch's NVMe. Single monolithic vault — no per-project subdivision, no NDA-isolation pattern at install (deferred per §15 Item 1 closure 2026-05-26; subfolder + indexer-exclusion mechanic prescribed for future amendment if NDA-tagged content later requires vault isolation). Doctrine-first hierarchy with the master summary at vault root:
 
-**Access pattern.** Filesystem reads/writes by operator. Agent access via kepano/obsidian-skills (filesystem-based skill set, native Hermes integration). Git history provides full audit trail.
+```
+~/vault/
+├── operator.md                          # L4 USER.md syncs from this exact path
+├── README.md                            # vault entry point
+├── final_master_summary.md              # root of the documentation graph
+├── final_memory_architecture.md         # parallel doctrine doc for memory layers
+├── final_handoff.md                     # active session log
+├── archive/                             # superseded but preserved
+│   ├── master_summary_v19.md
+│   ├── INFRASTRUCTURE_BIBLE_v19.md
+│   ├── AUTHORITY_SPEC_v19.md
+│   ├── DECISIONS_v19.md
+│   ├── REBALANCE_v19.md
+│   ├── JARVIS_PHASE2_SPEC.md
+│   └── (BIBLE_AUDIT_findings.md migrates here when drift tracking sunsets)
+└── projects/                            # per-subsystem documentation; populated organically
+    ├── jarvis/
+    ├── news-pipeline/
+    ├── evidence-layer/
+    ├── financial/
+    └── ...
+```
+
+The `final_` prefix on the three canonical-root docs signals canonical-final status — no further version-suffix bumps, in-place updated via git commits. Archive-folder docs retain their version suffixes because they correspond to historical doctrine versions. No PARA-style additions at install (`inbox/`, `templates/`, `journal/`, `people/` evaluated and rejected per the vault hygiene principle in §2).
+
+**Truth-singularity (multi-device, locked 2026-05-26 from §15 Item 7 walk).** Monarch is the sole Truth location for the vault. No multi-source replication; no MacBook-resident vault copy. MacBook accesses the vault remotely via SSH and/or Tailscale. Divergence vectors are zero by construction. Whether MacBook editing uses SSH-terminal only or also mounts `~/vault/` via Tailscale/SSHFS for native Obsidian UI is implementation-grade and decided at P1.5-1 build time — both implementations preserve the doctrine.
+
+**Access pattern.** Filesystem reads/writes by operator (directly on monarch or remotely via SSH/Tailscale). Agent access via kepano/obsidian-skills (filesystem-based skill set, native Hermes integration). Git history provides full audit trail. Git-versioned from initialization.
 
 **Jarvis observation.** Vault directory mtime; `git log --oneline -n 20` for recent activity; commit rate as activity signal; orphan note detection (notes with no backlinks) as periodic check.
 
-**Authority concern.** L6 is Truth — operator-authored. Agent-proposed vault edits via Hermes always Tier 3. Doctrine docs (this file, master_summary, AUTHORITY_SPEC) migrate in at initialization as committed history.
+**Authority concern.** L6 is Truth — operator-authored. Agent-proposed vault edits via Hermes always Tier 3. Doctrine docs (this file, final_master_summary, final_handoff) migrate in at initialization as committed history.
 
 ### §7.7 L7 — EverMemOS (Memory: long-horizon temporal)
 

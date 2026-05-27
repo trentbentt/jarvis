@@ -456,7 +456,7 @@ Four closed (1, 4, 5, 6), one open (2), one blocked (3).
 
 **Constraint mapping to artifact.**
 - **Pattern B parallel to n8n** → Hermes Agent exposes `/v1/chat/completions` + `/v1/responses` + `/api/jobs`. n8n keeps cron-driven data pipelines (news ingestion, financial data ETL); Hermes handles agent-loop work (research, synthesis, multi-step task execution). No workflow migration.
-- **Curator disabled / scoped narrowly** → Hermes ships an autonomous skill grader and consolidation loop (the Curator). Disabled at install. Skill promotion is operator-explicit only — when a vault procedure is stable enough to graduate, the operator explicitly moves it to `~/.hermes/skills/`. No N-uses counter, no autonomous promotion.
+- **Curator disabled / scoped narrowly** → Hermes ships an autonomous skill grader and consolidation loop (the Curator). Curator-the-grader (autonomous consolidation, deprecation, quality alerts) disabled at install. **Autonomous skill-creation hook routed to draft-state** per `MEMORY_ARCHITECTURE_v20.md` §8.4 (closure 2026-05-26 from §15 Item 4 walk): Hermes drafts candidates to `~/.hermes/skill-drafts/`; operator approves drafts via `approve-draft` to promote to Truth, or operator-directly promotes vault procedures via `promote-skill`. No N-uses counter, no autonomous promotion to Truth.
 - **Memory writes initially disabled** → reframed as Memory→Memory autonomous (Hermes can write to its own MEMORY.md, USER.md, session SQLite, skill files), Memory→Truth gated (Hermes proposing to update the Obsidian vault operator profile or any other Truth-layer artifact requires Tier 3 operator confirmation per Decision 5). Strict cold-start applies: new autonomous Hermes actions enter at Tier 3.
 - **Routed via DeepSeek V4 Flash initially** → Hermes default model configuration points at LiteLLM endpoint, model alias `deepseek-v4-flash`. Existing fallback chains apply per §6.2.
 
@@ -664,6 +664,17 @@ Nexus and 2nd Brain move from "design-only / deferred" to **phase 1.5 build targ
 - Decision 6 v19 closure (Jarvis + Financial = phase-level scope) remains in force for everything else; this amendment only expands Nexus and 2nd Brain treatment.
 
 **Build sequence** locked: vault init (1) → pgvector enable (2) → Codebase-Memory MCP deploy (3) → Hermes Agent adoption (4) → EverMemOS deploy (5) → Redis with financial pipeline (6).
+
+**Second amendment 2026-05-26 — Vault structure doctrine resolved.**
+
+The §15 walk in `MEMORY_ARCHITECTURE_v20.md` closed Items 1, 3, 4, 7 — the doctrine gaps gating Phase 1.5 step 1 (vault init) and step 2 (pgvector enable). Resolutions locked:
+
+- **Vault structure** (per `MEMORY_ARCHITECTURE_v20.md` §7.6): single monolithic `~/vault/` on monarch's NVMe; doctrine-first hierarchy with `final_master_summary.md`, `final_memory_architecture.md`, `final_handoff.md` at root; `projects/` for per-subsystem docs as children; `archive/` for superseded versions; no PARA-style additions (rejected per vault hygiene principle in `MEMORY_ARCHITECTURE_v20.md` §2).
+- **Truth singularity** (per `MEMORY_ARCHITECTURE_v20.md` §7.6): monarch is the sole vault Truth location; no replication; MacBook accesses remotely via SSH/Tailscale.
+- **pgvector install scope** (per `MEMORY_ARCHITECTURE_v20.md` §7.3): vault only at P1.5-2 install; code and news embeddings require explicit expansion ritual.
+- **Skill promotion mechanism** (per `MEMORY_ARCHITECTURE_v20.md` §8.4): draft-state pattern. Hermes autonomously drafts candidates; operator approves via `approve-draft` or directly promotes vault procedures via `promote-skill`; Curator-the-grader remains disabled.
+
+These amendments land atomically with this commit per §0.1 rule 4. Phase 1.5 step 1 build is now doctrine-unblocked.
 
 ---
 
@@ -934,7 +945,7 @@ Nous Research Hermes Agent (`github.com/NousResearch/hermes-agent`), v0.3+, MIT-
 
 - **File-backed memory.** `MEMORY.md` (~2,200 char hard cap) and `USER.md` (~1,375 char hard cap) injected into every system prompt. Plus `SOUL.md` for agent identity, plus session SQLite at `~/.hermes/state.db` with FTS5 full-text search.
 - **Autonomous skill creation.** Hermes distills reusable `SKILL.md` documents after multi-step task completion. Skills live in `~/.hermes/skills/` and per-project under `~/.opencode/skills/` for cross-agent discovery. 166+ tracked skills in the public catalog (87 bundled + 79 optional via agentskills.io).
-- **Curator** (autonomous skill grader and library consolidator). **Disabled on monarch deploy** per Decision 2 closure.
+- **Curator** (autonomous skill grader and library consolidator). **Curator-the-grader disabled on monarch deploy** per Decision 2 closure (autonomous consolidation, deprecation, quality alerts all off); autonomous skill-creation hook routed to draft-state per `MEMORY_ARCHITECTURE_v20.md` §8.4.
 - **Cron scheduler with `/api/jobs` REST API.** Daily reports, nightly backups, weekly audits.
 - **Messaging gateway** to 18 platforms (Telegram, Signal, Discord, Slack, WhatsApp, others). Operator-driven enablement.
 - **MCP integration.** Native consumption of MCP servers including Codebase-Memory (§16.6 / Phase 1.5 step 3) and Obsidian via kepano/obsidian-skills.
@@ -976,11 +987,11 @@ All Hermes autonomous writes fall under existing Decision 5 N=12 framework:
 
 ### §13.5 Build sequence
 
-Phase 1.5 step 4, after vault initialization, pgvector enable, and Codebase-Memory MCP deploy. Adoption command and configuration specifics handled by Claude Code against monarch state at build time. Configuration constraints (Curator disabled, default model = DeepSeek V4 Flash via LiteLLM, kepano/obsidian-skills installed pointing at vault, external memory providers all off) baked into deploy script before first Hermes session starts.
+Phase 1.5 step 4, after vault initialization, pgvector enable, and Codebase-Memory MCP deploy. Adoption command and configuration specifics handled by Claude Code against monarch state at build time. Configuration constraints (Curator-the-grader disabled with autonomous skill-creation hook routed to draft-state per `MEMORY_ARCHITECTURE_v20.md` §8.4, default model = DeepSeek V4 Flash via LiteLLM, kepano/obsidian-skills installed pointing at vault, external memory providers all off) baked into deploy script before first Hermes session starts.
 
 ### §13.6 Open items deferred to build
 
-- Skill promotion ritual (operator command + commit pattern when promoting vault note → Hermes skill)
+- ~~Skill promotion ritual (operator command + commit pattern when promoting vault note → Hermes skill)~~ ✅ CLOSED 2026-05-26 from §15 Item 4 walk — see `MEMORY_ARCHITECTURE_v20.md` §8.4 (draft-state pattern) and §15 Item 4 closure
 - Telegram / Signal gateway enablement decision per platform
 - Atropos RL pipeline scope (future, not v20)
 

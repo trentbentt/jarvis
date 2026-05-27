@@ -587,3 +587,103 @@ Safe to remove after next successful cold cycle confirms no regression.
 Built across one long session: Step 1 hygiene → Jarvis v0.1 deploy → v0.1 deadlock discovered via telemetry → v0.2 rewrite with snapshot/queue → soak verified → 80% target view added → 5.5 GB phi-4 cache reclaimed.
 
 The single most consequential finding: the hardware feels useless because v18 sized standard mode for the loading screen, not for use. Jarvis made this visible. v19 doctrine is mostly about giving each tier a job that matches the actual workload distribution.
+
+---
+
+## Session 2026-05-27 — §15 doctrine gap walk + doctrine bundle land
+
+### What happened
+
+Picked up the HANDOFF recommendation from the 2026-05-26 evening session: §15 doctrine gap walk on Items 1, 3, 4, 7 (all flagged as gating Phase 1.5 step 1 vault init and step 2 pgvector enable), followed by Thread C (C1 CLAUDE.md rewrite). Thread A (§15 walk + doctrine commits) completed in full. Thread C deferred to next session — doctrine bundle consumed the session.
+
+### Doctrine bundle — five commits landed
+
+| Commit | Hash | Scope |
+|---|---|---|
+| M1 | `34289bb` | `MEMORY_ARCHITECTURE_v20.md` §2: build-it-right scope clarification + vault hygiene principle |
+| M2 | `f7f1030` | `MEMORY_ARCHITECTURE_v20.md` §7.3: pgvector install scope + expansion ritual; §7.6: vault structure rewrite |
+| M3 | `90a07d9` | `MEMORY_ARCHITECTURE_v20.md` draft-state pattern + downstream consistency (§6, §8.4, §10.3, §11.4, §12.4) |
+| M4 | `0467639` | `MEMORY_ARCHITECTURE_v20.md` §15 closures (Items 1, 3, 4, 7) + §12 downstream propagation (§12.1, §12.2) |
+| S1 | `ec69ef3` | `master_summary_v20.md` D2 + D6 second amendment: vault structure doctrine resolved across §9.2, §9.6, §13.1, §13.5, §13.6 |
+
+Net: 19 anchors across 2 files, ~125 insertions, ~25 deletions. `MEMORY_ARCHITECTURE_v20.md` §15 open items: 4 closed, 6 remain open (Items 2, 5, 6, 8, 9, 10).
+
+### Doctrinal decisions made this session
+
+**Build-it-right scope clarification (MEMORY_ARCHITECTURE_v20.md §2, M1).**
+Build-it-right (locked 2026-05-26) applies to memory architecture correctness — the four-layer model, conflict-resolution rule, primary-author assignments, Truth-is-primary discipline. It does not extend to speculative content-scope features whose absence can be added as additive layers rather than rebuilds. NDA isolation is the canonical example. Deferring it is YAGNI discipline, not a build-it-right violation. This boundary was derived from operator push-back when the initial session framing treated Option D ("defer NDA, ship monolithic now") as conflicting with build-it-right.
+
+**Vault hygiene principle (MEMORY_ARCHITECTURE_v20.md §2, M1).**
+The vault's value derives from being a high-quality documentation graph, not from comprehensive capture. Garbage-in-garbage-out applies through the embedding layer: low-quality vault content gets embedded by L3, surfaced by L4 retrieval, and treated as Truth by downstream agents. Four PARA-style additions evaluated and rejected at install (inbox, templates, journal, people). Recorded in §2 so the rejection is not relitigated.
+
+**Vault structure (MEMORY_ARCHITECTURE_v20.md §7.6, M2 + M4 — §15 Item 1 CLOSED).**
+Decided in the prior session (2026-05-26 §15 walk), committed to doctrine this session. Single monolithic `~/vault/` on monarch's NVMe. Doctrine-first hierarchy: `final_master_summary.md`, `final_memory_architecture.md`, `final_handoff.md` at root; `archive/` for superseded versions; `projects/` for per-subsystem docs populated organically. `final_` prefix on canonical-root docs signals in-place updates via git, no version-suffix bumps. No PARA additions at install. NDA isolation deferred as future amendment (subfolder + indexer-exclusion mechanic recorded for amendment, not built at install).
+
+**Truth-singularity for multi-device (MEMORY_ARCHITECTURE_v20.md §7.6, M2 + M4 — §15 Item 7 CLOSED).**
+Decided in the prior session, committed this session. Monarch is the sole vault Truth location. No replication; no MacBook-resident vault copy. MacBook accesses remotely via SSH and/or Tailscale. Divergence vectors are zero by construction. Whether MacBook editing uses SSH-terminal only or Tailscale-mounted SSHFS for native Obsidian UI is implementation-grade, decided at P1.5-1 build time.
+
+**pgvector install scope + expansion ritual (MEMORY_ARCHITECTURE_v20.md §7.3, M2 + M4 — §15 Item 3 CLOSED).**
+Vault notes only at P1.5-2 install. Code chunks and news corpus not embedded at install. Each future corpus admission requires a four-step expansion ritual: justification (documented §16 open item), quality gate (filtering rules specified before embedding), atomic landing (doctrine amendment patch lands in same commit as indexer config), post-deploy validation (retrieval quality spot-checked; rollback if existing retrieval degrades). This is the vault hygiene principle applied to the index layer.
+
+**Skill promotion mechanism — draft-state pattern (MEMORY_ARCHITECTURE_v20.md §8.4, M3 + M4 — §15 Item 4 CLOSED).**
+Hermes's autonomous skill-creation hook is routed to a draft state (`~/.hermes/skill-drafts/<name>/SKILL.md`) rather than disabled. Curator-the-grader (autonomous consolidation, deprecation, quality alerts) remains disabled. Two promotion paths coexist: Hermes drafts → operator approves via `approve-draft`; operator directly promotes vault procedures via `promote-skill`. Both implemented as Hermes skill + bin script hybrid (bin script handles bootstrap and pre-Hermes fallback). Draft TTL: no auto-expiration; stale drafts (>30 days) surface as Tier 2 events via future `memory.py` listener. `jarvis-q skill-drafts` CLI subcommand surfaces pending drafts. Authority tiers: Hermes drafting is Tier 2 autonomous-with-log; `approve-draft` and `promote-skill` are Tier 3 operator-explicit; Curator-the-grader stays disabled until 30 days stable + 12 promoted skills + operator opt-in.
+
+This is the Reading 2 framing from the §15 Item 4 walk: "Hermes drafts autonomously, operator approves." It distinguishes Curator-the-grader (stays off) from the skill-creation hook (routed to drafts, operator-gated at promotion to Truth). Decision 2's "Curator disabled" language is now precise: Curator-the-grader disabled; skill-creation hook is draft-state-routed.
+
+**D6 second amendment surface (master_summary_v20.md §9.6, S1).**
+§15 Items 1, 3, 4, 7 closures added as "Second amendment 2026-05-26 — Vault structure doctrine resolved" block in §9.6. Declares Phase 1.5 step 1 (vault init) doctrine-unblocked.
+
+### Method notes banked (M20-series)
+
+**M20 — cat-heredoc terminal-garbling over Tailscale SSH.**
+Multi-anchor patch scripts piped via `cat > /tmp/XX-patch.py << 'SCRIPT_END'` produce garbled terminal echo at the heredoc terminator line when run over Tailscale SSH. The garbling is display-only — the file on disk is typically intact. Visual confirmation of the paste is unreliable. The correct verification pattern: `wc -l` (line count), `md5sum` (hash), `head -3` + `tail -3` (structural integrity), content-phrase `grep -c` (anchor presence), and `sed -n '<range>p'` spot-check on the relevant section. All five checks before `python3 /tmp/XX-patch.py`. Do not proceed on visual confidence alone.
+
+**M21 — grep-vs-unicode-escape mismatch in script verification.**
+When a patch script stores §, —, ✅ as `\u00a7`, `\u2014`, `\u2705` escape sequences (defensive practice for heredoc transit), grep targets for content-phrase verification must match the escape sequence literally, not the rendered glyph. `grep -c '§15'` returns 0 on a script that contains `\u00a715`. Better approach: `sed -n '<range>p'` directly on the relevant line range, or `grep -c 'u00a715'` without the backslash-u prefix depending on shell quoting. Discovered at S1 verification step when `grep -c 'CLOSED 2026-05-26 from §15 Item 4 walk'` returned 0 despite the content being present in the script as `\u00a715 Item 4 walk`.
+
+**M22 — §13.4 ghost anchor / doc-structure confidence.**
+A multi-hour doctrine session in the prior context confidently referenced "§13.4 authority table" in both a prose spec and a 20-anchor patch inventory. That section does not exist in `MEMORY_ARCHITECTURE_v20.md` — §13 is a 12-row cross-reference TOC with no subsections. The patch-script assert (`content.count(old) == 1`, count=0) caught the error before any disk write. The lesson: even a competent doctrine session will confidently reference doc structure that doesn't exist. Patch-script uniqueness asserts are the load-bearing safety net. The operator's review of the prose inventory is not sufficient. Verify anchor existence via `grep -nF` before writing a patch that targets it.
+
+### State of §15 open items post-session
+
+| Item | Status |
+|---|---|
+| 1 — Vault structure | ✅ CLOSED — see §7.6 |
+| 2 — pgvector embedding model | Open — gated on T5 throughput measurement at P1.5-2 |
+| 3 — pgvector install scope | ✅ CLOSED — vault only + expansion ritual, see §7.3 |
+| 4 — Skill promotion ritual | ✅ CLOSED — draft-state pattern, see §8.4 |
+| 5 — External provider re-enablement | Open — per-provider decision when first need surfaces |
+| 6 — EverMemOS Foresight + trading pipeline | Open — when financial pipeline build starts |
+| 7 — Multi-device vault sync | ✅ CLOSED — monarch sole Truth, SSH/Tailscale access, see §7.6 |
+| 8 — Cross-layer event coordination | Open — deferred to first concrete need |
+| 9 — Memory listener architecture | Open — at memory.py build time |
+| 10 — Authority promotion granularity | Open — at first promotion attempt |
+
+### Open items carried forward
+
+- **C1 — CLAUDE.md rewrite.** Highest priority doc cleanup. Covers A3 + NEW-v20-4 + venv-naming lesson (M19 from 2026-05-26 session): `~/venv/inference/bin/python3` is the canonical interpreter for any session running tests or validation; the "inference" name is a misnomer for the shared monarch-stack venv. Catches Claude Code cold on first invocation every session. ~30 min standalone. Do this before any Phase 1.5 Claude Code work.
+- **Phase 1.5 build — now doctrine-unblocked for steps 1 and 2.** Vault init (P1.5-1): `~/vault/` per §7.6 spec, `git init`, migrate doctrine docs, create `operator.md`, `README.md`. pgvector enable (P1.5-2): `CREATE EXTENSION vector;`, vault-notes-only initial embeddings. Both steps are ready for Claude Code with no further doctrine gaps.
+- **Phase 1.5 build — steps 3-5.** Codebase-Memory MCP deploy (P1.5-3), Hermes Agent adoption (P1.5-4, with draft-state pattern per §8.4 as part of deploy config), EverMemOS deploy (P1.5-5). All locked in sequence per MEMORY_ARCHITECTURE_v20.md §12.
+- **C2, C3, C4, C5** — remaining doc cleanups per prior session carry-forward. Lower priority than C1 and Phase 1.5 build.
+- **Phase 2 listeners** — process.py (no prereqs), quota.py, cron.py, memory.py. Unchanged from prior session carry-forward.
+- **R2 measurement** — T1 ctx 24K delta pending next natural T1 restart.
+- **E3** — T6 spin-up tooling + first-deploy VRAM verification. After model download.
+- **Backup hygiene** — `MEMORY_ARCHITECTURE_v20.md.{M1,M2,M3,M4}-backup` and `master_summary_v20.md.S1-backup` safe to remove after next successful cold cycle.
+
+### Recommended next-session opening
+
+**Run first:** `git log --oneline | head -7` to confirm five commits visible (ec69ef3 through 34289bb). `git status` to confirm clean working tree.
+
+**Then C1 (CLAUDE.md rewrite, ~30 min):** Read the existing `~/projects/jarvis/CLAUDE.md`, rewrite per A3 + NEW-v20-4 + M19 venv-naming lesson. The `~/venv/inference/bin/python3` note must be prominent — it is the single most common Claude Code cold-start failure on this stack.
+
+**Then Phase 1.5 step 1 in Claude Code:** `~/vault/` init per MEMORY_ARCHITECTURE_v20.md §7.6. Claude Code reads this HANDOFF + MEMORY_ARCHITECTURE_v20.md §7.6 + §12.1 as session context. No doctrine gaps remain for this step.
+
+### Backup files on disk (not in repo)
+
+- `MEMORY_ARCHITECTURE_v20.md.M1-backup`
+- `MEMORY_ARCHITECTURE_v20.md.M2-backup`
+- `MEMORY_ARCHITECTURE_v20.md.M3-backup`
+- `MEMORY_ARCHITECTURE_v20.md.M4-backup`
+- `master_summary_v20.md.S1-backup`
+
+Safe to remove after next successful cold cycle confirms no regression.

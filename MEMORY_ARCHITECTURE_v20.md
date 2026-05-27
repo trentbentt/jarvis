@@ -310,19 +310,21 @@ For each of the seven physical members (L1 Redis through L7 EverMemOS), the on-d
 
 ```
 ~/vault/
+├── .gitignore                           # OS artifacts, credential safety net, reserved private subdirs
 ├── operator.md                          # L4 USER.md syncs from this exact path
 ├── README.md                            # vault entry point
 ├── final_master_summary.md              # root of the documentation graph
 ├── final_memory_architecture.md         # parallel doctrine doc for memory layers
 ├── final_handoff.md                     # active session log
-├── archive/                             # superseded but preserved
+├── skills/                              # kepano/obsidian-skills + operator-promoted skills (§8.4)
+├── archive/                             # superseded; sunsets when superseded
 │   ├── master_summary_v19.md
 │   ├── INFRASTRUCTURE_BIBLE_v19.md
 │   ├── AUTHORITY_SPEC_v19.md
 │   ├── DECISIONS_v19.md
 │   ├── REBALANCE_v19.md
 │   ├── JARVIS_PHASE2_SPEC.md
-│   └── (BIBLE_AUDIT_findings.md migrates here when drift tracking sunsets)
+│   └── BIBLE_AUDIT_findings.md          # sunsets at P1.5-1; §16.1 in final_master_summary.md is canonical going forward
 └── projects/                            # per-subsystem documentation; populated organically
     ├── jarvis/
     ├── news-pipeline/
@@ -333,7 +335,13 @@ For each of the seven physical members (L1 Redis through L7 EverMemOS), the on-d
 
 The `final_` prefix on the three canonical-root docs signals canonical-final status — no further version-suffix bumps, in-place updated via git commits. Archive-folder docs retain their version suffixes because they correspond to historical doctrine versions. No PARA-style additions at install (`inbox/`, `templates/`, `journal/`, `people/` evaluated and rejected per the vault hygiene principle in §2).
 
+**Two-git-repo distinction (locked 2026-05-27).** The vault is a separate git repository from the monarch code repositories by deliberate design, not by convention. Code repositories (`~/projects/jarvis/` and future monolithic codebase subdirectories) are indexed by Codebase-Memory MCP — AST graph, symbol navigation, structural queries — and benefit from monolithic organization where cross-project symbol resolution works natively. The vault is indexed by pgvector (semantic, §7.3) and Obsidian backlinks (graph traversal), and benefits from isolation so vault-agent interactions (Hermes reads, operator edits via Obsidian UI or SSH) do not require code-repo write access or create merge-conflict surfaces with code tooling. The monolithic codebase principle applies to code repos only; the vault being a separate git repo is the correct architectural choice, not a default.
+
 **Truth-singularity (multi-device, locked 2026-05-26 from §15 Item 7 walk).** Monarch is the sole Truth location for the vault. No multi-source replication; no MacBook-resident vault copy. MacBook accesses the vault remotely via SSH and/or Tailscale. Divergence vectors are zero by construction. Whether MacBook editing uses SSH-terminal only or also mounts `~/vault/` via Tailscale/SSHFS for native Obsidian UI is implementation-grade and decided at P1.5-1 build time — both implementations preserve the doctrine.
+
+**Migration pattern at P1.5-1 (locked 2026-05-27).** Doctrine docs MOVE from `~/projects/jarvis/` to vault root at vault init — they do not copy or symlink. Specifically: `master_summary_v20.md` → `~/vault/final_master_summary.md`; this document (`MEMORY_ARCHITECTURE_v20.md`) → `~/vault/final_memory_architecture.md`; `HANDOFF_v19.md` → `~/vault/final_handoff.md`. The seven v19 archive docs (AUTHORITY_SPEC, DECISIONS, REBALANCE, INFRASTRUCTURE_BIBLE, JARVIS_PHASE2_SPEC, master_summary_v19, BIBLE_AUDIT_findings) move to `~/vault/archive/`. After migration the vault is canonical; the jarvis repo retains pre-migration git history for these files but loses the working files themselves. CLAUDE.md in the jarvis repo updates its Pointers table to vault paths in the same P1.5-1 session. §0.2 of `final_master_summary.md` self-updates in the vault initial commit so the file's first canonical version is already self-consistent. Truth-singularity is preserved by deletion-from-jarvis-after-copy-to-vault — at no point do two files claim canonical status.
+
+**Remote policy (locked 2026-05-27).** Vault is initialized with a private GitHub remote at P1.5-1 and pushed with the initial commit. The remote closes the `master_summary_v20.md` §16.8 gap #8 (no documented vault backup beyond Postgres cron). Initial vault content is doctrine docs (non-NDA, non-credential); pre-excluded private subfolders (`private/`, `nda/`, `sensitive/`, `trading-edge/`) carry forward future NDA isolation amendment per §15 Item 1. Credential patterns (`*.env`, `*.key`, `*secret*`, `*credential*`, etc.) are catchall-excluded in `.gitignore` as defense against accidental credential commits. MacBook clones the vault read-only via Tailscale when needed; primary access remains SSH/SSHFS to monarch per Truth-singularity. The vault repo and the jarvis repo are siblings — neither is a submodule of the other; both push independently.
 
 **Access pattern.** Filesystem reads/writes by operator (directly on monarch or remotely via SSH/Tailscale). Agent access via kepano/obsidian-skills (filesystem-based skill set, native Hermes integration). Git history provides full audit trail. Git-versioned from initialization.
 
@@ -658,7 +666,7 @@ The locked Phase 1.5 sequence per master_summary_v20.md §16.6 Tier E. Each step
 
 **Prereqs.** None. Initial vault content (doctrine docs) is already on disk in `~/projects/jarvis/` as `master_summary_v20.md`, this document, AUTHORITY_SPEC_v19.md, DECISIONS_v19.md, REBALANCE_v19.md, BIBLE_AUDIT_findings.md, HANDOFF_v19.md.
 
-**Exit criteria.** `~/vault/` exists, git-initialized, with initial commit containing migrated doctrine, an `operator.md` identity file, and a clear subfolder structure. `kepano/obsidian-skills` cloned into project-level skill paths for downstream Hermes use.
+**Exit criteria.** `~/vault/` exists, git-initialized with private GitHub remote pushed (per §7.6 Remote policy), with initial commit containing migrated doctrine, an operator-reviewed `operator.md` identity file, `README.md`, `.gitignore`, and the full structure per §7.6 tree (`skills/`, `archive/`, empty `projects/`). `kepano/obsidian-skills` content cloned as plain files into `~/vault/skills/` (no submodule); Hermes config wiring of the skills path is deferred to P1.5-4 per §12.4.
 
 **Vault structure resolved 2026-05-26.** See §7.6 and §15 Item 1: single monolithic `~/vault/` on monarch's NVMe; doctrine-first hierarchy with `final_master_summary.md`, `final_memory_architecture.md`, `final_handoff.md` at root; `projects/` for per-subsystem docs; `archive/` for superseded versions; no PARA additions; NDA isolation deferred as future amendment per build-it-right scope clarification (§2). Multi-device sync resolved per §15 Item 7: monarch is sole Truth, MacBook accesses remotely via SSH/Tailscale. Implementation-grade choices (SSH-terminal-only vs Tailscale-mounted Obsidian UI) deferred to P1.5-1 build time.
 
@@ -684,7 +692,7 @@ The locked Phase 1.5 sequence per master_summary_v20.md §16.6 Tier E. Each step
 
 **Prereqs.** Steps 1-3.
 
-**Exit criteria.** Hermes daemon running, accessible at its OpenAI-compatible endpoint, integrated into LiteLLM routing as a model alias or peer endpoint. `MEMORY.md`, `USER.md`, `SOUL.md` initialized. kepano/obsidian-skills installed. USER.md auto-sync from vault working. First operator-explicit skill promotion documented. Hermes added to `MONARCH_HEALTH_COMPONENTS`. Skill heuristic from §8.6 codified as initial Hermes skill. **Draft-state pattern per §8.4 deployed:** `~/.hermes/skill-drafts/` directory created; Hermes autonomous skill-creation hook configured to route to drafts not skills; `approve-draft` and `promote-skill` skills bootstrapped (initial hand-written SKILL.md files); `jarvis-q skill-drafts` CLI subcommand stubbed (full implementation lands with `memory.py` listener).
+**Exit criteria.** Hermes daemon running, accessible at its OpenAI-compatible endpoint, integrated into LiteLLM routing as a model alias or peer endpoint. `MEMORY.md`, `USER.md`, `SOUL.md` initialized. kepano/obsidian-skills installed at `~/vault/skills/` per P1.5-1 (§12.1); **Hermes skills-path wiring** decided at this step: either (a) Hermes config adds `~/vault/skills/` as an additional skills search path alongside `~/.hermes/skills/`, or (b) kepano content is copied/symlinked from `~/vault/skills/` into `~/.hermes/skills/`. Implementation choice depends on Hermes config surface at install time; per §15 Item 11 the file-watcher mechanism (a) standalone process, (b) Codebase-Memory piggyback, or (c) Hermes-skill-on-cron also resolves here. USER.md auto-sync from vault working. First operator-explicit skill promotion documented. Hermes added to `MONARCH_HEALTH_COMPONENTS`. Skill heuristic from §8.6 codified as initial Hermes skill. **Draft-state pattern per §8.4 deployed:** `~/.hermes/skill-drafts/` directory created; Hermes autonomous skill-creation hook configured to route to drafts not skills; `approve-draft` and `promote-skill` skills bootstrapped (initial hand-written SKILL.md files); `jarvis-q skill-drafts` CLI subcommand stubbed (full implementation lands with `memory.py` listener).
 
 ### §12.5 Step 5 — EverMemOS deploy
 
@@ -768,6 +776,12 @@ Things this document does not yet authoritatively cover. Build-implementation de
 9. **Memory listener architecture.** Single `memory.py` listener watching all layers, or per-layer listeners. Resolution: at memory.py build time, after process.py / quota.py / cron.py pattern is established.
 
 10. **Authority promotion granularity.** Does N=12 promotion apply per Memory→Memory action type (Hermes MEMORY.md append, Hermes USER.md update, EverMemOS MemCell creation, EverMemOS MemScene consolidation as separate types) or per memory layer category? Resolution: at first promotion attempt.
+
+11. **Vault file watcher implementation (surfaced 2026-05-27).** §8.2 names three options for the watcher process: (a) standalone process, (b) piggyback on Codebase-Memory's file watcher, (c) Hermes skill firing on cron. Resolution: at P1.5-4 Hermes install, after the Hermes file-watcher capability surface is known. Default until decided: USER.md auto-sync from vault operates on Hermes session-start refresh (Hermes reads `~/vault/operator.md` fresh each session) rather than real-time mtime detection — operator-edit-during-session changes apply on next session.
+
+12. **Hermes session SQLite → EverMemOS ingestion cadence (surfaced 2026-05-27).** §7.7 says EverMemOS treats Hermes session SQLite as one of its conversation sources but doesn't specify cadence (real-time stream, batch on session-end, periodic cron). Resolution: at P1.5-5 EverMemOS deploy, after EverMemOS ingestion API surface and Hermes session lifecycle hooks are both known. Default at deploy: batch-on-session-end with operator-acknowledgeable digest, conservative enough not to lose state if Hermes session crashes mid-conversation.
+
+13. **L7 EverMemOS profile-drift digest cadence (surfaced 2026-05-27).** §11.7 specifies that EverMemOS profile diverging from vault `operator.md` (due to autonomous L7 updates) surfaces as a Tier 3 digest for operator review — but cadence is unspecified. For high-stakes consumption (financial pipeline Foresight queries, multi-month engagement state), slow cadence means agents could read drifted profile state for days/weeks before operator catches it. Resolution: at P1.5-5 deploy with initial cadence = daily digest; tighten to real-time alert on profile fields known to affect financial pipeline once that consumer goes live (master_summary_v20.md §16.6 E1).
 
 ---
 

@@ -353,7 +353,7 @@ class Health(BaseModel):
 class SystemModel(BaseModel):
     """
     The canonical in-memory model of monarch's state.
-    Written to ~/.local/state/jarvis/state.json every 30s by the daemon.
+    Written to ~/.local/state/jarvis/state.json every 10s by the daemon.
     Read by jarvis-q CLI and (eventually) the Jarvis decision engine.
     """
     # Label field only — read by humans and logs, never acted on by migration

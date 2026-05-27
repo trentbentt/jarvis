@@ -1,38 +1,74 @@
 # Jarvis — CLAUDE.md
 
-## What This Is
+Lean entry point for Claude Code sessions on the Jarvis repo. Operating rules,
+where to look, what to read. **Not** the doctrine source — see Pointers below.
 
-Jarvis is the resource manager and orchestration layer for the monarch inference stack. It maintains a continuously-updated model of system state (VRAM, tier health, workloads, cloud quotas, scheduled events) and will eventually make autonomous allocation decisions to prevent failures under contention.
+## Canonical interpreter (read this first)
 
-**Current version: v0.1** — observability substrate only. Listeners collect data; no decisions are made yet. The decision engine and voice surface are Phase 2.
+The Jarvis daemon runs under `~/venv/inference/bin/python3`. This is the shared
+monarch-stack venv hosting both inference tier llama-server processes AND
+Jarvis itself. The name is a misnomer — it is not inference-only.
 
-## Architecture
-
-```
-daemon.py           ← main process; starts listeners, writes state.json every 30s
-jarvis/
-  schema.py         ← Pydantic models for all 8 domains (the canonical truth)
-  state.py          ← thread-safe singleton StateStore; load_from_disk() for CLI
-  listeners/
-    base.py         ← BaseListener: interval polling, error isolation per thread
-    vram.py         ← 5s; nvidia-smi; attributes VRAM to tiers via PID→port→tier
-    tier_health.py  ← 15s; HTTP /health polls all service endpoints
-    # TODO Phase 2:
-    # process.py   ← 10s; /proc for PID uptime, RAM resident, CPU%
-    # quota.py     ← 60s; LiteLLM log parsing + Pro usage telemetry
-    # cron.py      ← 5min; schedule reconciliation against crontab + Hermes
-bin/
-  jarvis-q          ← CLI; reads state.json; subcommands: vram/health/tiers/etc.
-```
-
-## Running
+**For any test, repl, or one-off validation against Jarvis code, invoke this
+interpreter explicitly.** Bare `python3` resolves to system Python and fails on
+`import pydantic` (or any other Jarvis dependency).
 
 ```bash
-# The daemon runs as a window in the inference tmux session.
-# deploy.sh creates it automatically.
-tmux attach -t inference   # → jarvis window
+# Run a one-off against Jarvis schema:
+~/venv/inference/bin/python3 -c "from jarvis.schema import MONARCH_TIERS; print(len(MONARCH_TIERS))"
 
-# Query from anywhere on monarch:
+# Verify the daemon's interpreter matches the one you intend to use:
+ps -fp $(pgrep -f daemon.py)
+```
+
+## What Jarvis is
+
+The resource manager, orchestration layer, and operator-facing entry point for
+the monarch stack. Maintains a continuously-updated model of system state
+(VRAM, tier health, workloads, cloud quotas, scheduled events) and gates
+autonomous action against the operator's authority spec.
+
+**Current version: v0.2** (snapshot/queue rewrite; RLock contention deadlocks
+fixed). Two listeners live (`vram.py`, `tier_health.py`); Phase 2 build queue:
+`process.py`, `quota.py`, `cron.py` (per `master_summary_v20.md` §12.4),
+`memory.py` (per `MEMORY_ARCHITECTURE_v20.md` §10.2).
+
+## Repo layout
+
+```
+daemon.py             ← main process; starts listeners; writes state.json every 10s
+deploy.sh             ← creates the `jarvis` window in the `control` tmux session
+jarvis/
+  schema.py           ← Pydantic models for all 9 domains; MONARCH_TIERS is the tier source-of-truth
+  state.py            ← thread-safe StateStore (snapshot-on-read, queue-on-write, single writer thread)
+  listeners/
+    base.py           ← BaseListener: interval polling, error isolation per thread
+    vram.py           ← 5s; nvidia-smi → tier attribution via PID → port → tier
+    tier_health.py    ← 15s; HTTP /health polls all service endpoints
+bin/
+  jarvis-q            ← CLI; reads state.json; subcommands: vram/health/tiers/workloads/quotas/events/all/json
+```
+
+## tmux topology (Path B, since 2026-05-21)
+
+Two sessions, not one:
+
+| Session | Lifetime | Hosts |
+|---|---|---|
+| `control` | long-lived; survives `inference-down` | bootstrap, jarvis, validation-gate, lora-dispatcher, litellm, t1-interactive |
+| `inference` | dataplane; cycle-safe | bootstrap, t3-content, t4-phi4, t5-small (+ t2/t6 when burst-up) |
+
+The Jarvis daemon lives in the `control` session. `tmux attach -t control` →
+jarvis window. Dataplane cycles via `inference-up` / `inference-down` no
+longer affect Jarvis.
+
+## Running and querying
+
+```bash
+# Attach to the daemon window:
+tmux attach -t control   # → jarvis window
+
+# Query from anywhere on monarch (no live daemon connection needed; CLI reads state.json):
 jarvis-q all
 jarvis-q vram
 jarvis-q health
@@ -42,52 +78,43 @@ jarvis-q events 30
 
 ## State file
 
-`~/.local/state/jarvis/state.json` — written every 30s by daemon. Atomic replace (writes .tmp then renames). The CLI reads this file directly; no live connection to the daemon needed.
+`~/.local/state/jarvis/state.json` — written every 10s by the daemon via
+atomic replace (writes `.tmp` then renames). The CLI reads this file directly.
 
-## Monarch hardware constants (in schema.py)
+Runtime artifacts are not doctrine (`master_summary_v20.md` §0.1 rule 5).
+Stale keys after a code-side rename are pruned and hydrated by
+`load_from_disk()` per the D1 patch — see `master_summary_v20.md` §16.1
+NEW-v20-1.
 
-RTX 3090 FE · 24576 MiB VRAM · Ryzen 9 9900X · 96 GB DDR5-6000 · 4TB NVMe · PCIe 4.0 x16 · CUDA 12.8 pinned (11 packages on apt-mark hold).
+## Pointers (source-of-truth)
 
-## Tier configuration (in schema.py — MONARCH_TIERS)
+This file is the lean entry point, not the doctrine source. For anything substantive:
 
-| Tier | Port | Model            | Context | np | Notes              |
-|------|------|------------------|---------|----|-------------------|
-| T1   | 8080 | Qwen3.6-27B Q4   | 36K     | 1  | Hermes/Jarvis host |
-| T2   | 8083 | Qwen3.6-27B Q4   | 16K     | 1  | Bounded summaries  |
-| T3   | 8084 | Qwen3.6-27B Q4   | 8K      | 1  | CPU-only           |
-| T4   | 8002 | Phi-4-mini Q4    | 16K     | 4  | Fast classifier    |
-| T5   | 8085 | Qwen3-1.7B Q5    | 8K      | 1  | CPU-only seed      |
-| T6   | 8086 | Qwen3.6-35B-A3B  | 64K     | 1  | OFFLINE — on-demand coder burst |
+| Question | Read |
+|---|---|
+| Hardware envelope, tier configuration, doctrine, open queue, audit items | `master_summary_v20.md` |
+| Memory layers, vault structure, Hermes / EverMemOS roles, primary-author table | `MEMORY_ARCHITECTURE_v20.md` |
+| Last session's work, commits, decisions, carry-forward | `HANDOFF_v19.md` |
+| Tier constants (the actual values) | `jarvis/schema.py::MONARCH_TIERS` |
+| Live system state | `jarvis-q all` |
 
-T6 is `enabled=False` in MONARCH_TIERS. The listener treats it as OFFLINE until a coder-up script brings it live.
+Truth hierarchy when these disagree: **monarch disk > git log > `jarvis-q all`
+> github.com (raw) > docs > chat history.**
 
-## Open items for Phase 2
+## What Jarvis is NOT
 
-- `listeners/process.py` — PID uptime, RAM resident, CPU% per tier
-- `listeners/quota.py` — LiteLLM log parsing for API cost tracking; Pro usage telemetry
-- `listeners/cron.py` — crontab + Hermes schedule reconciliation → `model.schedule`
-- Postgres persistence for `events.log` and `workloads.completed`
-- Decision engine (profile-based VRAM allocation)
-- Voice surface (operator notification)
+- Not a replacement for `~/bin/inference-up` / `~/bin/t2-up` — those scripts
+  manage tier bringup; Jarvis observes and (eventually) routes.
+- Not Hermes — Hermes Agent is the L4 agentic working memory + skill layer.
+  Jarvis is the Arbiter. See `MEMORY_ARCHITECTURE_v20.md` §3 (four-layer
+  model) and §8 (Hermes detail).
+- Not 2nd Brain, not Nexus, not EverMemOS — Jarvis observes those layers; it
+  does not own their content.
 
 ## Updating this file
 
-Update CLAUDE.md whenever:
-- A new listener is added
-- The tier configuration changes (update MONARCH_TIERS in schema.py AND the table above)
-- The state file path changes
-- The project moves to a new phase
-
-## What Jarvis is NOT (v0.1)
-
-- Not a decision maker — it watches, does not act
-- Not a voice assistant — notifications come later
-- Not a replacement for inference-up/down — those scripts are unchanged
-- Not Hermes — Hermes is the outbound agentic work layer; Jarvis manages resources
-
-## Key files NOT in this repo
-
-- `~/bin/inference-up` — five-tier bringup script (patched May 2026: fail() no longer kills tmux)
-- `~/bin/inference-burst-up/down` — burst mode scripts  
-- `~/litellm/config.yaml` — LiteLLM routing configuration
-- `~/projects/news-pipeline/` — news pipeline (Stages 1-5, validated)
+CLAUDE.md is updated only when the **operating contract** changes —
+interpreter path, tmux topology, CLI surface, state file location, or the
+role pointers above. Tier configuration, listener cadences, hardware specs,
+and doctrine claims live in their canonical source files; do not duplicate
+them here.

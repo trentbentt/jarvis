@@ -111,9 +111,9 @@ T2 is `burst_only` per schema, brought up on-demand via `~/bin/t2-up`, idle-by-d
 
 ## Jarvis v0.2 — Built & Running
 
-**Location:** `~/projects/jarvis/`. Daemon runs as a window in the `inference` tmux session.
+**Location:** `~/projects/jarvis/`. Daemon runs as a window in the `control` tmux session (Path B, since 2026-05-21).
 
-**Architecture:** Pydantic schema (8 domains), thread-safe state store with snapshot-on-read + queue-on-write + single writer thread, two listeners (VRAM 5s, tier_health 15s), JSON state at `~/.local/state/jarvis/state.json` written every 10s.
+**Architecture:** Pydantic schema (9 domains), thread-safe state store with snapshot-on-read + queue-on-write + single writer thread, two listeners (VRAM 5s, tier_health 15s), JSON state at `~/.local/state/jarvis/state.json` written every 10s.
 
 **v0.1 → v0.2 fix:** v0.1 had RLock contention deadlocks that froze listeners after a few minutes. v0.2 uses snapshot semantics and a writer queue — verified stable across soak.
 

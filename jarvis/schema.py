@@ -2,7 +2,7 @@
 Jarvis System Model — Schema v0.1
 Host: monarch (RTX 3090 24GB, Ryzen 9 9900X, 96GB DDR5, Ubuntu 24.04)
 
-Eight top-level domains:
+Nine top-level domains:
   hardware      — static, calibrated once
   tiers         — live state per tier T1–T5 (T6 offline by default)
   workloads     — active / pending / completed rolling window
@@ -11,6 +11,7 @@ Eight top-level domains:
   resources     — live VRAM / RAM / CPU
   events        — append-only rolling log (~24h)
   health        — per-component health checks
+  operator      — operator preferences and presence state
 
 Doctrine: schema fields are what Jarvis must know to function as a manager.
 Adding a field is a deliberate decision. Nothing here is inferred from

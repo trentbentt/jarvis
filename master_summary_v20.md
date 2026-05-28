@@ -1133,16 +1133,16 @@ The two layers are complementary. Doctrine answers "what phase are we in, what's
 
 | ID | Item | Source-of-truth file | Status | Owner / next action |
 |---|---|---|---|---|
-| A3 | `CLAUDE.md` stale: claims "v0.1", "30s persist", `inference` session for daemon, T1 36K ctx, references retired `inference-burst-up/down` | `~/projects/jarvis/CLAUDE.md` | OPEN | Doc cleanup — single commit rewriting CLAUDE.md against current code (`schema.py`, `state.py`, `deploy.sh`). 30 min. |
+| A3 | `CLAUDE.md` stale: claims "v0.1", "30s persist", `inference` session for daemon, T1 36K ctx, references retired `inference-burst-up/down` | `~/projects/jarvis/CLAUDE.md` | ✅ RESOLVED 2026-05-27 (13173f2) | CLAUDE.md fully rewritten as lean-pointer entry point per §0.2; M19 venv-naming lesson promoted to top of file. |
 | A5 | `schema_version = "0.1.0"` field exists in `SystemModel`; no migration logic uses it | `schema.py:360` | ✅ RESOLVED 2026-05-26 (D4) | Label-only doctrine ratified; cold-cycle is the migration strategy. Comment added in `schema.py` making this explicit. |
 | A7 | v18 Hermes brainstorm may not exist as discrete artifacts | n/a (artifact-existence question) | ✅ RESOLVED 2026-05-26 | Confirmed absent on disk via `grep -rni hermes ~/projects/` and `find ~ -name '*hermes*'`. Decision 2 closed simultaneously against actual Nous Research Hermes Agent artifact (§9.2). |
-| A12 | `SystemModel` docstring says 8 domains; actual class has 9 (`operator` added) | `schema.py:5-13` docstring vs `schema.py:354-371` class | OPEN | Cosmetic schema docstring fix. 5 min. |
-| A13 | `HANDOFF_v19.md:114` says daemon runs in `inference` session; deploy.sh and Path B put it in `control` | `HANDOFF_v19.md:114` | OPEN | Doc cleanup; one-line edit in HANDOFF. 2 min. |
+| A12 | `SystemModel` docstring says 8 domains; actual class has 9 (`operator` added) | `schema.py:5-13` docstring vs `schema.py:354-371` class | ✅ RESOLVED 2026-05-27 | Docstring updated: "Eight" → "Nine" + `operator` row added. |
+| A13 | `HANDOFF_v19.md:114` says daemon runs in `inference` session; deploy.sh and Path B put it in `control` | `HANDOFF_v19.md:114` | ✅ RESOLVED 2026-05-27 | Patched line 114 (`inference` → `control`); also caught line 116 "8 domains" → "9 domains" same drift as A12. |
 | **NEW-v20-1** | **`state.json` runtime stickiness — orphan `deepseek_v3` key persists alongside `deepseek_v4_flash` after rename** | `state.py:215-245` (code) vs `state.json:304` (runtime) | ✅ RESOLVED 2026-05-26 (D1) | Path (a) implemented: `load_from_disk()` now prunes orphan keys + hydrates missing canonical keys, with INFO-level logging. Live state.json cleaned of `deepseek_v3` and `haiku_4_5` orphans; missing `deepseek_v4_flash` hydrated. |
 | **NEW-v20-2** | **`state.json` runtime stickiness — `sleeping_window_*` field names + values persist after `overnight_window_*` rename** | `schema.py:306-307` (code) vs `state.json:414-415` (runtime) | ✅ RESOLVED 2026-05-26 | Confirmed self-healing via Pydantic v2 `extra="ignore"` default — `OperatorPreferences` loads `overnight_window_*` correctly from schema defaults despite stale `sleeping_window_*` keys in state.json. No code change required. |
 | **NEW-v20-3** | **`state.json` runtime stickiness — T1 `context_size: 36864` persists after Rebalance Change 2 patch** | `schema.py:382` (code, 24576) vs `state.json:43` (runtime, 36864) | OPEN — same root cause | Resolves naturally on next T1 restart per §11.2. The state.json runtime field is overwritten by the listeners that read live tier config; this is the only one of the three "runtime stickiness" cases that self-heals. |
-| **NEW-v20-4** | **`schema.py:357` SystemModel docstring says state.json written "every 30s by the daemon"; actual is 10s** | `schema.py:357` vs `daemon.py PERSIST_INTERVAL_SEC = 10` (per audit A3) | OPEN | Same edit as A3. Group with CLAUDE.md cleanup. 1 min. |
-| **NEW-v20-5** | **`inference-up.sh:282` inline comment says "T4 ... 4K ctx"; actual launch is 16K (`:288`)** | `inference-up.sh:282` vs `inference-up.sh:288` | OPEN | One-line comment fix. 1 min. |
+| **NEW-v20-4** | **`schema.py:357` SystemModel docstring says state.json written "every 30s by the daemon"; actual is 10s** | `schema.py:357` vs `daemon.py PERSIST_INTERVAL_SEC = 10` (per audit A3) | ✅ RESOLVED 2026-05-27 (13173f2) | Bundled with CLAUDE.md rewrite per §16.5 C1; schema.py docstring 30s → 10s. |
+| **NEW-v20-5** | **`~/bin/inference-up:282` inline comment said "T4 ... 4K ctx"; actual launch is 16K (`:287`)** | `~/bin/inference-up:282` vs `~/bin/inference-up:287` | ✅ RESOLVED 2026-05-27 | Comment fixed to "16K ctx". File path also corrected in this row — audit said `.sh` extension; actual file is `~/bin/inference-up` (no extension). |
 | **NEW-v20-6** | **`Health.sweep_interval_sec: int = 30` field in `schema.py:349` is unused; `tier_health.py:104` hardcodes `15.0`** | `schema.py:349` vs `tier_health.py:104` | ✅ RESOLVED 2026-05-26 (D2) | Field stripped from `schema.py`. Listener class-attribute cadence is the canonical pattern (vram.py, tier_health.py, future process.py/quota.py/cron.py all follow). |
 
 ### §16.2 Open decisions
@@ -1174,11 +1174,11 @@ The two layers are complementary. Doctrine answers "what phase are we in, what's
 
 | # | Item | Where | Time |
 |---|---|---|---|
-| C1 | `~/projects/jarvis/CLAUDE.md` rewrite per A3 + NEW-v20-4 | jarvis repo | 30 min |
+| ~~C1~~ | ~~`~/projects/jarvis/CLAUDE.md` rewrite per A3 + NEW-v20-4~~ ✅ RESOLVED 2026-05-27 (13173f2) | jarvis repo | done |
 | C2 | `~/projects/jarvis/README.md` v20-aware rewrite (replace doc-set table with pointer to §0.2; remove the v19-era doc-set list inherited from old `INFRASTRUCTURE_BIBLE_v19.md` §17.2) | jarvis repo | 15 min |
 | C3 | `ref-blueprint §Phase 15` rewrite (flagged stale by CONTEXT.md, carried since v18) | news-pipeline repo | 30 min |
 | C4 | Per-stack `CONTEXT.md` updates — six project repos (consultancy, content, design, financial, leads, exploratory-coding) | six project repos | 1-2 hr total |
-| C5 | Single-line fixes per NEW-v20-5, A12, A13 | various | 10 min total |
+| ~~C5~~ | ~~Single-line fixes per NEW-v20-5, A12, A13~~ ✅ RESOLVED 2026-05-27 | various | done |
 
 ### §16.6 Larger workstreams (Tier E)
 

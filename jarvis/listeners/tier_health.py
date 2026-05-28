@@ -13,6 +13,9 @@ import time
 from datetime import datetime, timezone
 from typing import Optional
 
+import json
+import subprocess
+
 import urllib.request
 import urllib.error
 
@@ -36,6 +39,18 @@ _HEALTH_PATHS: dict[str, str] = {
 }
 
 _TCP_ONLY = {"postgres", "monarch-postgres"}
+
+# CLI-probed components: stdio MCP servers and other non-network services.
+# Probe = run command; exit 0 + last stdout line parses as JSON = healthy.
+_CLI_PROBE: dict[str, list[str]] = {
+    "codebase-memory": ["/home/monarch/.local/bin/codebase-memory-mcp", "cli", "list_projects"],
+}
+
+# Companion paths whose newest-file mtime is reported as informational detail
+# (e.g. last_index_activity for codebase-memory). NOT a healthy/unhealthy gate.
+_MTIME_FILES: dict[str, str] = {
+    "codebase-memory": "/home/monarch/.cache/codebase-memory-mcp/",
+}
 
 # Marker file written by ~/bin/t2-down on clean teardown, removed by ~/bin/t2-up.
 # When a burst_only tier is unresponsive AND this marker exists, the listener
@@ -91,6 +106,49 @@ def _tcp_check(port: int, timeout: float = 2.0) -> tuple[bool, int]:
         return False, ms
 
 
+def _cli_check(cmd: list[str], timeout: float = 5.0) -> tuple[bool, int]:
+    """Run a CLI command; exit 0 + last stdout line parses as JSON = healthy."""
+    start = time.monotonic()
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        ms = int((time.monotonic() - start) * 1000)
+        if proc.returncode != 0:
+            return False, ms
+        for line in reversed(proc.stdout.splitlines()):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                json.loads(line)
+                return True, ms
+            except ValueError:
+                return False, ms
+        return False, ms
+    except Exception:
+        ms = int((time.monotonic() - start) * 1000)
+        return False, ms
+
+
+def _newest_mtime(path: str) -> Optional[datetime]:
+    """Return UTC mtime of newest entry under `path`. None if missing/empty."""
+    import os
+    try:
+        if os.path.isfile(path):
+            return datetime.fromtimestamp(os.path.getmtime(path), tz=timezone.utc)
+        if not os.path.isdir(path):
+            return None
+        newest = 0.0
+        for entry in os.listdir(path):
+            m = os.path.getmtime(os.path.join(path, entry))
+            if m > newest:
+                newest = m
+        if newest == 0.0:
+            return None
+        return datetime.fromtimestamp(newest, tz=timezone.utc)
+    except Exception:
+        return None
+
+
 _TIER_TO_COMPONENT = {
     "t1": "llama-server-t1",
     "t2": "llama-server-t2",
@@ -113,11 +171,12 @@ class TierHealthListener(BaseListener):
 
         updated_components: list[ComponentHealth] = []
         for comp in components_to_check:
-            if comp.port is None:
+            if comp.name in _CLI_PROBE:
+                healthy, ms = _cli_check(_CLI_PROBE[comp.name])
+            elif comp.port is None:
                 updated_components.append(comp)
                 continue
-
-            if comp.name in _TCP_ONLY:
+            elif comp.name in _TCP_ONLY:
                 healthy, ms = _tcp_check(comp.port)
             else:
                 path = _HEALTH_PATHS.get(comp.name, "/health")
@@ -126,6 +185,11 @@ class TierHealthListener(BaseListener):
             if healthy:
                 new_status = HealthStatus.OK
                 new_detail = None
+                if comp.name in _MTIME_FILES:
+                    mtime = _newest_mtime(_MTIME_FILES[comp.name])
+                    if mtime is not None:
+                        age_s = int((now - mtime).total_seconds())
+                        new_detail = f"last_index_activity {age_s}s ago"
             elif _is_burst_idle(comp.name, snap):
                 new_status = HealthStatus.IDLE
                 new_detail = "deepseek fallback active (clean idle)"

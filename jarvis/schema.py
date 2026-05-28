@@ -425,6 +425,7 @@ MONARCH_HEALTH_COMPONENTS = [
     {"name": "postgres",           "port": 5432},
     {"name": "monarch-postgres",   "port": 5433},
     {"name": "embed-nomic",        "port": 8087},
+    {"name": "codebase-memory",    "port": None},   # stdio MCP; CLI-probed
 ]
 
 # Port → tier_id mapping (used by VRAM listener to attribute GPU memory)

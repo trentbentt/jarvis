@@ -1177,7 +1177,7 @@ The two layers are complementary. Doctrine answers "what phase are we in, what's
 | ~~C1~~ | ~~`~/projects/jarvis/CLAUDE.md` rewrite per A3 + NEW-v20-4~~ ✅ RESOLVED 2026-05-27 (13173f2) | jarvis repo | done |
 | C2 | `~/projects/jarvis/README.md` v20-aware rewrite (replace doc-set table with pointer to §0.2; remove the v19-era doc-set list inherited from old `INFRASTRUCTURE_BIBLE_v19.md` §17.2) | jarvis repo | 15 min |
 | C3 | `ref-blueprint §Phase 15` rewrite (flagged stale by CONTEXT.md, carried since v18) | news-pipeline repo | 30 min |
-| C4 | Per-stack `CONTEXT.md` updates — six project repos (consultancy, content, design, financial, leads, exploratory-coding) | six project repos | 1-2 hr total |
+| C4 | Per-stack `CONTEXT.md` updates — seven repos have full four-file docs (consultancy, content, design, financial, leads, exploratory-coding, news-pipeline; audit undercounted by 1). Three doc-less dirs also present and unclassified: evidence-layer, jarvis-archive, news-pipeline-evidence-ship. Update each stack’s CONTEXT.md when that stack activates per one-stack-at-a-time framing (corrected 2026-05-27). | per-stack at activation | ~15 min per stack |
 | ~~C5~~ | ~~Single-line fixes per NEW-v20-5, A12, A13~~ ✅ RESOLVED 2026-05-27 | various | done |
 
 ### §16.6 Larger workstreams (Tier E)

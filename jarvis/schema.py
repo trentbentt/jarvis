@@ -423,6 +423,8 @@ MONARCH_HEALTH_COMPONENTS = [
     {"name": "lora-dispatcher",    "port": 4200},
     {"name": "n8n",                "port": 5678},
     {"name": "postgres",           "port": 5432},
+    {"name": "monarch-postgres",   "port": 5433},
+    {"name": "embed-nomic",        "port": 8087},
 ]
 
 # Port → tier_id mapping (used by VRAM listener to attribute GPU memory)

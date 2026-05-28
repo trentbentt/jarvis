@@ -32,9 +32,10 @@ _HEALTH_PATHS: dict[str, str] = {
     "validation-gate":   "/health",
     "lora-dispatcher":   "/health",
     "n8n":               "/healthz",
+    "embed-nomic":       "/health",
 }
 
-_TCP_ONLY = {"postgres"}
+_TCP_ONLY = {"postgres", "monarch-postgres"}
 
 # Marker file written by ~/bin/t2-down on clean teardown, removed by ~/bin/t2-up.
 # When a burst_only tier is unresponsive AND this marker exists, the listener

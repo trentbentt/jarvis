@@ -687,3 +687,119 @@ A multi-hour doctrine session in the prior context confidently referenced "§13.
 - `master_summary_v20.md.S1-backup`
 
 Safe to remove after next successful cold cycle confirms no regression.
+---
+
+## Session 2026-05-27 (continued) — C1 close + P1.5-1 design walk + hygiene closures
+
+### What happened
+
+Picked up from morning session's recommendation: C1 (CLAUDE.md rewrite) first, then Phase 1.5 step 1 (vault init) in Claude Code. C1 closed cleanly. Before handing off to Claude Code, operator surfaced the P1.5-1 design gaps that had been deferred at MEMORY_ARCHITECTURE §15 — running the design walk this session means Claude Code can execute against locked doctrine rather than locking doctrine during the build.
+
+Three commits this session. Doctrine + hygiene + the C1 close from earlier in the day.
+
+### Commits landed
+
+| Commit | Hash | Scope |
+|---|---|---|
+| C1 | `13173f2` | `CLAUDE.md` full rewrite (A3) + `schema.py:355` docstring 30s -> 10s (NEW-v20-4) |
+| P1.5-1 doctrine | `ca76498` | `MEMORY_ARCHITECTURE_v20.md` §7.6 vault structure amendments + §12 exit criteria + §15 items 11-13 |
+| C5 hygiene | `8aa88c4` | A12, A13/A13b, NEW-v20-5 + §16 row flips across 4 files |
+
+Net: 3 files patched in C1 (CLAUDE.md, schema.py + side-edit via Python), 1 file patched in ca76498 (MEMORY_ARCHITECTURE), 4 files patched in 8aa88c4 (schema.py, HANDOFF, master_summary, ~/bin/inference-up).
+
+### C1 closure detail (commit 13173f2)
+
+CLAUDE.md fully rewritten as lean-pointer entry point per master_summary_v20.md §0.2. Five drift sources resolved: v0.1 -> v0.2, 30s -> 10s persist, inference -> control session, T1 36K -> 24K, inference-burst-up/down -> t2-up/t2-down. M19 venv-naming lesson promoted to top of file: `~/venv/inference/bin/python3` is the canonical interpreter for the shared monarch-stack venv (name is a misnomer — hosts both inference tiers AND Jarvis). schema.py:355 SystemModel docstring also corrected (30s -> 10s) in the same bundle.
+
+Pointers table replaces former duplication of hardware envelope, tier configuration, and listener spec — those live canonically in master_summary §2/§11/§12.4 with cross-references back from CLAUDE.md.
+
+### P1.5-1 design walk — sub-decisions 1-10 locked
+
+The mission brief for vault initialization had ten sub-decisions that needed resolution before Claude Code could execute. All ten closed this session.
+
+**Sub-decision 1 — Migration mode: MOVE.** Doctrine docs move from `~/projects/jarvis/` to `~/vault/`. Not copy (truth-singularity violation), not symlink (anti-pattern, breaks portability). Jarvis repo loses the working files; pre-migration git history preserved in jarvis repo, post-migration history tracked in vault repo. Locked in MEMORY_ARCHITECTURE §7.6 "Migration pattern at P1.5-1" paragraph.
+
+**Sub-decision 2 — Self-referential path updates.** Three commits at P1.5-1 in this order: (1) vault initial commit with §0.2 already pointing at vault paths (file's first canonical version is self-consistent), (2) jarvis CLAUDE.md Pointers table updates to vault paths, (3) jarvis deletes the migrated files.
+
+**Sub-decision 3 — HANDOFF workflow post-vault.** Session-end commits go to vault repo going forward. The monolithic-codebase principle exposed a doctrine gap: code repos and doc vaults are indexed by different memory technologies (Codebase-Memory AST graph vs pgvector + Obsidian backlinks) and have fundamentally different write disciplines. Two-git-repo distinction is correct by design, not convention. Banked as new doctrine paragraph in §7.6.
+
+**Sub-decision 4 — BIBLE_AUDIT sunsets at P1.5-1.** §16.1 in master_summary has absorbed the drift-tracking function. BIBLE_AUDIT migrates to `~/vault/archive/` at P1.5-1, not deferred. Confirmed completed projects use master_summary + HANDOFF; workflow builds use per-stack CONTEXT.md as drift tracker; no standalone audit doc needed going forward.
+
+**Sub-decision 5 — operator.md initial content.** Claude Code drafts from master_summary §1 + §2 + §9 + HANDOFF operator-profile sections; operator reviews before the init commit fires. Tier 3 authority gating applies to all subsequent agent-proposed edits; initialization is a one-time seeded draft outside that authority surface.
+
+**Sub-decision 6 — kepano/obsidian-skills target: `~/vault/skills/`.** Plain files, no submodule. Skills versioned alongside doctrine. Hermes config wiring (vault path as search path vs copy/symlink into `~/.hermes/skills/`) decided at P1.5-4 build time per §12.4.
+
+**Sub-decision 7 — Remote policy: private GitHub at init.** Closes master_summary §16.8 gap #8 (no documented vault backup beyond Postgres cron). Initial vault content is non-NDA doctrine; pre-excluded private subfolders carry future NDA amendment. Operator creates empty repo before Claude Code runs P1.5-1.
+
+**Sub-decision 8 — `projects/` empty at init.** Populated organically as each stack activates. Operator framing: "one stack at a time, news-pipeline farthest along." No placeholder subdirs.
+
+**Sub-decision 9 — .gitignore: targeted private-repo protections.** OS artifacts, Obsidian workspace cache, credential safety net (`*.env`, `*.key`, `*secret*`, etc.), pre-reserved private subdirs (`private/`, `nda/`, `sensitive/`, `trading-edge/`).
+
+**Sub-decision 10 — All seven archive files exist on disk.** Verified by `ls ~/projects/jarvis/`. BIBLE_AUDIT_findings.md also present and migrates to archive per sub-decision 4. README.md stays in jarvis repo for future C2 rewrite — not a vault target.
+
+### Path A scope expansion — §15 items 11-13 surfaced
+
+The session also surfaced three doctrine gaps that don't block P1.5-1 but block downstream Phase 1.5 steps. Documented as new §15 open items so they don't get forgotten:
+
+- **Item 11** (vault file-watcher implementation) — resolution at P1.5-4 after Hermes capability surface is known. Default until decided: USER.md auto-sync on Hermes session-start refresh (not real-time mtime detection).
+- **Item 12** (Hermes SQLite -> EverMemOS ingestion cadence) — resolution at P1.5-5. Default at deploy: batch-on-session-end with operator-acknowledgeable digest.
+- **Item 13** (L7 EverMemOS profile-drift digest cadence) — resolution at P1.5-5 with initial cadence = daily digest; tighten to real-time alert on profile fields affecting financial pipeline once E1 goes live.
+
+This is the build-it-right principle applied to its honest scope: memory architecture correctness is locked; downstream implementation choices are surfaced as open items rather than silently deferred.
+
+### C5 hygiene closure (commit 8aa88c4)
+
+Bundled four cosmetic fixes after design walk completed:
+
+- A12 — schema.py docstring "Eight" -> "Nine" + missing `operator` row added (matched SystemModel:354-371).
+- A13 — HANDOFF_v19.md:114 `inference` -> `control` session.
+- A13b — caught same-class drift at HANDOFF_v19.md:116 during A12 verification (`8 domains` -> `9 domains`). Expanded A13 row to record.
+- NEW-v20-5 — ~/bin/inference-up:282 T4 launch comment `4K ctx` -> `16K ctx` (matching actual `--ctx-size 16384` on :287). Also corrected the source-of-truth column in §16.1 — audit row said `.sh` extension; actual file has no extension.
+
+§16 row flips: A3 + NEW-v20-4 -> RESOLVED 2026-05-27 (13173f2). A12 + A13 + NEW-v20-5 -> RESOLVED 2026-05-27 (8aa88c4). §16.5 C1 + C5 strikethrough.
+
+Remaining §16.1 OPEN items: NEW-v20-3 only (self-heals on next T1 restart per §11.2, intentionally left open).
+
+§16.5 doc cleanup queue now: C2 (README rewrite), C3 (ref-blueprint), C4 (per-stack CONTEXT.md updates). None gate Phase 1.5 step 1.
+
+### Doctrine signal banked — build-it-right scope clarification
+
+Operator push-back during sub-decision 1 ("D conflicts with build-it-right") exposed that the original build-it-right framing (locked 2026-05-26) didn't have a scope boundary. Read literally, it could be invoked to block any deferral on any feature. The clarification landed in MEMORY_ARCHITECTURE §2:
+
+> **Scope of the build-it-right principle.** Applies to memory architecture correctness — the four-layer model, conflict-resolution rule, primary-author assignments, Truth-is-primary discipline. Does not extend to speculative content-scope features whose absence can be added as additive layers rather than rebuilds. NDA isolation is the canonical example: its absence at install does not compound silently into agentic memory failure, so deferring it is a YAGNI call rather than a build-it-right violation.
+
+This is the exact pattern the project instructions encode: operator push-back becomes doctrine refinement. Build-it-right and YAGNI now sit next to each other with a clean boundary.
+
+### Method notes banked
+
+**M23 — Bundle != atomic.** Packing heredoc write + verification + commit into one paste means M20 garbling at the heredoc terminator eats every downstream phase. Split file-write from verification from commit into separate pastes. The verification paste should be the first thing run after a heredoc paste — if it runs, the heredoc closed correctly; if it doesn't run, M20 fired. This session split each commit into: (1) write script, (2) md5/structural verify, (3) backup + run + diff review, (4) commit. Four pastes per commit minimum.
+
+**M24 — base64 transit for markdown content.** Heredoc paste of markdown over Tailscale corrupts unpredictably (M20 from prior sessions). For full-file or large-paragraph writes containing em-dashes, tree-drawing characters, §-glyphs, backticks, or arrows, encode the file content to base64 in the workspace, then decode on monarch. Alphabet is `A-Za-z0-9+/=` only — no terminal-escape-sensitive characters. md5 round-trip from workspace to monarch provides structural assertion that transit was clean. Used in this session for the P1.5-1 mission brief draft. Project instructions prescribe heredoc/sed/Python read-modify-write as defaults; base64 transit is the right escalation when markdown content over Tailscale is the failure surface.
+
+**M25 — Audit rows can carry their own drift.** NEW-v20-5 row in §16.1 said `inference-up.sh:282` — file path with `.sh` extension and audit-line `:288`. Both wrong. Actual file is `~/bin/inference-up` (no extension), and line 287 is the `--ctx-size 16384` launch (not 288). The C5 patch corrected both the underlying file (4K -> 16K comment) AND the audit row's source-of-truth column. Lesson: when closing an audit row, verify the row's stated anchors as well as the underlying fix. Audit rows are doctrine too; they can drift from disk just like any other claim.
+
+### Three pre-existing method notes still relevant
+
+From prior sessions, still load-bearing this session:
+
+- **M19** (2026-05-26): `~/venv/inference/bin/python3` is canonical interpreter despite misleading name. Used throughout this session for patch script execution.
+- **M20** (2026-05-26): cat-heredoc + Tailscale + markdown content = terminal display garbling at heredoc terminator. Display unreliable; file content typically intact. md5/structural verify is the source of truth.
+- **M22** (2026-05-26): §13.4 ghost — confident references to doc structure that doesn't exist. Patch-script asserts catch these; operator review of prose inventory doesn't.
+
+### Carried open items into next session
+
+- **Phase 1.5 step 1** — vault init in Claude Code. Doctrine-unblocked. Mission brief drafted this session covers all 10 sub-decisions, the operator.md sourcing spec, and the post-mission verification checklist. Next-session Claude Code reads MEMORY_ARCHITECTURE §7.6 + §12.1 + the mission brief and executes.
+- **Phase 1.5 steps 2-5** — pgvector, Codebase-Memory MCP, Hermes Agent, EverMemOS. Sequential per §12. Items 11-13 surface as resolution-at-step doctrine decisions during 4 and 5.
+- **§16.5 C2-C4** — README rewrite, ref-blueprint news-pipeline §Phase 15, per-stack CONTEXT.md updates. Operator framing: "one stack at a time, news-pipeline farthest along" — C3 (news-pipeline ref-blueprint) gets priority when news-pipeline workstream resumes; C4 batches as each stack activates rather than all at once.
+- **§16.1 NEW-v20-3** — only remaining open audit row. Self-heals on next T1 restart.
+- **R2 measurement** — T1 ctx 24K VRAM delta pending next natural T1 restart.
+- **E3** — T6 spin-up tooling + first-deploy VRAM verification after model download.
+- **Backup files on disk** — `CLAUDE.md.C1-backup`, `jarvis/schema.py.C1-backup`, `jarvis/schema.py.C5-backup`, `HANDOFF_v19.md.C5-backup`, `master_summary_v20.md.C5-backup`, `~/bin/inference-up.C5-backup`, `MEMORY_ARCHITECTURE_v20.md.C2-backup`. Safe to remove after next successful cold cycle confirms no regression.
+
+### Recommended next-session opening
+
+**Run first:** `git log --oneline | head -7` to confirm session commits (8aa88c4 -> ca76498 -> 13173f2 -> 3b0580c) and that working tree is clean.
+
+**Then P1.5-1 in Claude Code.** Hand Claude Code the mission brief from this session plus MEMORY_ARCHITECTURE §7.6 + §12.1 as canonical doctrine for the build. Operator pre-creates the empty private GitHub repo before Claude Code starts. Claude Code drafts operator.md from the sources specified in sub-decision 5; operator reviews before the init commit fires. Post-mission verification checklist (in the mission brief) confirms all exit criteria before declaring P1.5-1 complete.
+
+After P1.5-1 commits land: the doctrine docs on disk migrate to vault root. From that point forward, session-end HANDOFF commits go to `~/vault/final_handoff.md` in the vault repo. The transition itself is part of P1.5-1's deliverable per sub-decision 2.

@@ -92,9 +92,9 @@ This file is the lean entry point, not the doctrine source. For anything substan
 
 | Question | Read |
 |---|---|
-| Hardware envelope, tier configuration, doctrine, open queue, audit items | `master_summary_v20.md` |
-| Memory layers, vault structure, Hermes / EverMemOS roles, primary-author table | `MEMORY_ARCHITECTURE_v20.md` |
-| Last session's work, commits, decisions, carry-forward | `HANDOFF_v19.md` |
+| Hardware envelope, tier configuration, doctrine, open queue, audit items | `~/vault/final_master_summary.md` |
+| Memory layers, vault structure, Hermes / EverMemOS roles, primary-author table | `~/vault/final_memory_architecture.md` |
+| Last session's work, commits, decisions, carry-forward | `~/vault/final_handoff.md` |
 | Tier constants (the actual values) | `jarvis/schema.py::MONARCH_TIERS` |
 | Live system state | `jarvis-q all` |
 

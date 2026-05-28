@@ -280,7 +280,30 @@ Commands:
   events [N]    Last N events (default 20)
   all           Full summary
   json          Raw state dump
+  skill-drafts  List pending Hermes skill drafts (stub; full impl with memory.py)
 """
+
+
+# P1.5-4 Step 8 stub — list ~/.hermes/skill-drafts/ contents.
+# Full implementation (mtime, summary, promotion gates) lands with the
+# memory.py listener per master_summary_v20 §12.4 / MEMORY_ARCHITECTURE §10.2.
+def cmd_skill_drafts() -> None:
+    import os
+    drafts_dir = os.path.expanduser("~/.hermes/skill-drafts")
+    if not os.path.isdir(drafts_dir):
+        print(dim(f"No skill-drafts dir at {drafts_dir}"))
+        print(dim("(Hermes draft-state pattern not yet bootstrapped — see P1.5-4 Step 8.)"))
+        return
+    entries = sorted(e for e in os.listdir(drafts_dir) if not e.startswith("."))
+    print("Hermes skill drafts (~/.hermes/skill-drafts/):")
+    if not entries:
+        print(dim("  (none — drafts dir is empty)"))
+        return
+    for name in entries:
+        skill_path = os.path.join(drafts_dir, name, "SKILL.md")
+        marker = "✓" if os.path.isfile(skill_path) else "?"
+        print(f"  {marker} {name}")
+    print(dim("Review with: invoke `approve-draft` skill in Hermes."))
 
 def main() -> None:
     args = sys.argv[1:]
@@ -289,6 +312,11 @@ def main() -> None:
         sys.exit(0)
 
     cmd = args[0].lower()
+
+    # skill-drafts reads the filesystem directly; no state file needed.
+    if cmd == "skill-drafts":
+        cmd_skill_drafts()
+        return
 
     model = StateStore.load_from_disk()
     if model is None:

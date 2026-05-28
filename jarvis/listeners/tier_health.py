@@ -8,6 +8,7 @@ Queues update functions via StateStore.apply() — never holds the model lock.
 from __future__ import annotations
 
 import logging
+import os
 import socket
 import time
 from datetime import datetime, timezone
@@ -36,6 +37,14 @@ _HEALTH_PATHS: dict[str, str] = {
     "lora-dispatcher":   "/health",
     "n8n":               "/healthz",
     "embed-nomic":       "/health",
+    "hermes":            "/v1/models",
+}
+
+# Components that require Authorization: Bearer <token> for the health probe.
+# Value is the env-var NAME holding the token — never the literal token.
+# Read fresh on each call so key rotation doesn't require a daemon restart.
+_BEARER_ENV: dict[str, str] = {
+    "hermes": "API_SERVER_KEY",
 }
 
 _TCP_ONLY = {"postgres", "monarch-postgres"}
@@ -77,17 +86,22 @@ def _is_burst_idle(comp_name: str, snap) -> bool:
 
 
 
-def _http_check(port: int, path: str, timeout: float = 3.0) -> tuple[bool, int]:
+def _http_check(port: int, path: str, timeout: float = 3.0,
+                bearer_env: Optional[str] = None) -> tuple[bool, int]:
     url = f"http://127.0.0.1:{port}{path}"
     start = time.monotonic()
     try:
         req = urllib.request.Request(url)
+        if bearer_env:
+            token = os.environ.get(bearer_env, "")
+            if token:
+                req.add_header("Authorization", f"Bearer {token}")
         with urllib.request.urlopen(req, timeout=timeout):
             ms = int((time.monotonic() - start) * 1000)
             return True, ms
     except urllib.error.HTTPError as e:
         if e.code == 404 and path != "/v1/models":
-            return _http_check(port, "/v1/models", timeout)
+            return _http_check(port, "/v1/models", timeout, bearer_env)
         ms = int((time.monotonic() - start) * 1000)
         return False, ms
     except Exception:
@@ -180,7 +194,8 @@ class TierHealthListener(BaseListener):
                 healthy, ms = _tcp_check(comp.port)
             else:
                 path = _HEALTH_PATHS.get(comp.name, "/health")
-                healthy, ms = _http_check(comp.port, path)
+                bearer_env = _BEARER_ENV.get(comp.name)
+                healthy, ms = _http_check(comp.port, path, bearer_env=bearer_env)
 
             if healthy:
                 new_status = HealthStatus.OK

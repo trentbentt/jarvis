@@ -84,6 +84,7 @@ if tmux has-session -t "${CONTROL_SESSION}" 2>/dev/null; then
 
   tmux new-window -t "${CONTROL_SESSION}" -n jarvis \
     "source $VENV/bin/activate && \
+     source $HOME/.config/inference/api_keys.env && \
      cd $JARVIS_DIR && \
      JARVIS_STATE_PATH=$STATE_DIR/state.json \
      JARVIS_LOG_PATH=$STATE_DIR/daemon.log \

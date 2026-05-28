@@ -803,3 +803,76 @@ From prior sessions, still load-bearing this session:
 **Then P1.5-1 in Claude Code.** Hand Claude Code the mission brief from this session plus MEMORY_ARCHITECTURE §7.6 + §12.1 as canonical doctrine for the build. Operator pre-creates the empty private GitHub repo before Claude Code starts. Claude Code drafts operator.md from the sources specified in sub-decision 5; operator reviews before the init commit fires. Post-mission verification checklist (in the mission brief) confirms all exit criteria before declaring P1.5-1 complete.
 
 After P1.5-1 commits land: the doctrine docs on disk migrate to vault root. From that point forward, session-end HANDOFF commits go to `~/vault/final_handoff.md` in the vault repo. The transition itself is part of P1.5-1's deliverable per sub-decision 2.
+---
+
+## Session 2026-05-27 (pre-flight) — directory hygiene before P1.5-1
+
+### Purpose
+
+Short session. Goal: verify jarvis directory is in clean state before handing to
+Claude Code for P1.5-1 vault init. No doctrine design work; two findings corrected.
+
+### Commits landed
+
+| Commit | Hash | Scope |
+|---|---|---|
+| C4 row correction | `788d047` | `master_summary_v20.md §16.5`: six → seven stacks + 3 unclassified dirs |
+
+### Non-commit changes
+
+- **Stale-brief fix (untracked file edit).** `P1_5_1_VAULT_INIT_MISSION_BRIEF.md` had a
+  live imperative instructing Claude Code to apply the Two-git-repo-distinction paragraph
+  to `§7.6` — but that amendment already landed in `ca76498` last session. Three edits:
+  (1) header marked ALREADY APPLIED IN ca76498 — DO NOT RE-APPLY, (2) "Patch: Add the
+  following paragraph" replaced with STATUS banner explaining it travels with the file at
+  migration, (3) trailing anchor-check + "second vault commit" instruction replaced with
+  SUPERSEDED note. The blockquote (historical record of the paragraph text) is preserved
+  untouched. File remains untracked — see Q2(a) decision below.
+
+- **Three stray backups removed.** `deploy.sh.preB-backup`,
+  `HANDOFF_v19.md.preB-section-backup`, `master_summary_v20.md.D3-close-backup` survived
+  last session's cleanup pass because the `rm` glob patterns didn't match `.preB-*` or
+  `.D3-close-backup`. Removed explicitly by name. Repo root now 0 backup files.
+
+### Disk scan findings banked
+
+Full `ls -la` + `find` scan of `~/projects/jarvis/` and sibling stacks run
+2026-05-27. Key findings:
+
+1. **No CONSTITUTION.md or CONTEXT.md in jarvis repo.** Confirmed correct by design.
+   `master_summary_v20.md` + `MEMORY_ARCHITECTURE_v20.md` absorb what would be
+   constitution + blueprint for the substrate itself. The four-file pattern (§0.3) is
+   downstream-stacks-only. No action needed.
+
+2. **CLAUDE.md Pointers table is clean for pre-migration state.** Lines 95-97 point at
+   the three canonical docs by their current jarvis-repo names. These flip to vault paths
+   during P1.5-1 Step 9 — correct as-is.
+
+3. **§16.5 C4 audit undercounted.** Original count: six stacks. Actual: seven stacks with
+   full four-file docs (news-pipeline was omitted from the original audit). Three
+   additional doc-less dirs present and unclassified: `evidence-layer` (named in §7.6
+   vault tree as a real subsystem), `jarvis-archive` (ambiguous), `news-pipeline-evidence-ship`
+   (ambiguous). Corrected in 788d047. C4 disposition unchanged: per-stack at activation.
+
+4. **`P1_5_1_VAULT_INIT_MISSION_BRIEF.md` is untracked.** Intentional per Q2(a) decision
+   this session (see below).
+
+### Decision banked — mission brief home (Q2)
+
+The mission brief stays untracked in `~/projects/jarvis/` until P1.5-1 runs. After
+P1.5-1, it migrates to `~/vault/projects/jarvis/` as the historical build record for how
+the vault was initialized. It is not committed to the jarvis repo and not deleted after
+the build — it earns its place in vault as the P1.5-1 primary source document.
+
+### Recommended next-session opening
+
+1. `git log --oneline | head -5` — confirm 788d047 → 0748150 → 8aa88c4 trail.
+2. `git status` — confirm only `P1_5_1_VAULT_INIT_MISSION_BRIEF.md` untracked.
+3. **Pre-mission checklist before Claude Code:** create empty private GitHub repo
+   (no README, no license, no .gitignore — Claude Code populates all of these). Have
+   the SSH remote URL ready.
+4. Hand Claude Code: the mission brief + `MEMORY_ARCHITECTURE_v20.md §7.6` + `§12.1`
+   as canonical doctrine. Claude Code drafts `operator.md`, stops for operator review,
+   then executes vault init per the mission brief step sequence.
+5. Note to Claude Code: the MEMORY_ARCHITECTURE amendment section in the brief is
+   **ALREADY APPLIED** (ca76498) — skip that section entirely.

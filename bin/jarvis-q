@@ -19,6 +19,7 @@ Usage:
 from __future__ import annotations
 
 import json
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -27,7 +28,7 @@ from typing import Optional
 # Allow running as a script from any directory
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from jarvis.schema import HealthStatus, OOMRisk, TierState
+from jarvis.schema import HealthStatus, MemoryLayerHealth, OOMRisk, TierState
 from jarvis.state import StateStore
 
 # ─── Colour helpers ────────────────────────────────────────────────────────────
@@ -279,6 +280,46 @@ def cmd_quotas(model) -> None:
             print(f"        {dim('tokens today')} in:{tin:,}  out:{tout:,}")
 
 
+def cmd_memory(model) -> None:
+    """Per-layer memory architecture health + activity (MEMORY_ARCHITECTURE §10)."""
+    print(bold("── Memory Layers (§10) ──────────────────────────────────"))
+    mem = getattr(model, "memory", None)
+    if mem is None or not getattr(mem, "layers", None):
+        print(dim("  No memory data — memory.py not running / schema predates it."))
+        return
+
+    hcolor = {
+        MemoryLayerHealth.OK:             green("OK            "),
+        MemoryLayerHealth.DEGRADED:       yellow("DEGRADED      "),
+        MemoryLayerHealth.UNRESPONSIVE:   red("UNRESPONSIVE  "),
+        MemoryLayerHealth.NOT_CONFIGURED: dim("NOT_CONFIGURED"),
+        MemoryLayerHealth.UNKNOWN:        dim("UNKNOWN       "),
+    }
+
+    for lid in ("L1", "L2", "L3", "L4", "L5", "L6", "L7"):
+        L = mem.layers.get(lid)
+        if L is None:
+            continue
+        status = hcolor.get(L.health, str(L.health))
+        ms = f"{L.response_ms}ms" if L.response_ms else ""
+        sig = f"  {dim(L.health_signal)}" if L.health_signal else ""
+        print(f"  {lid} {L.name:<16} [{L.role:<6}] {status} {ms:<6}{sig}")
+        if L.activity_signal and L.activity_signal != L.health_signal:
+            print(f"        {dim('activity: ' + L.activity_signal)}")
+        if L.anomaly:
+            print(f"        {red('anomaly: ' + L.anomaly)}")
+
+    total = getattr(mem, "skill_drafts_total", 0)
+    stale = getattr(mem, "skill_drafts_stale", [])
+    if total or stale:
+        line = f"\n  skill-drafts: {total} pending"
+        if stale:
+            line += red(f"  ({len(stale)} stale >30d: {', '.join(stale)})")
+        print(line)
+
+    print(f"\n  Last sweep: {_ago(getattr(mem, 'last_sweep', None))}")
+
+
 def cmd_events(model, n: int = 20) -> None:
     print(bold(f"── Events (last {n}) ─────────────────────────────────────"))
     events = model.events.log[-n:]
@@ -309,6 +350,7 @@ def cmd_all(model) -> None:
     cmd_tiers(model);   print()
     cmd_workloads(model); print()
     cmd_quotas(model);  print()
+    cmd_memory(model);  print()
     cmd_events(model, n=10)
 
 
@@ -324,20 +366,43 @@ Commands:
   workloads     Active and recent workloads
   quotas        Cloud API budget status
   schedule      Cron reconciliation — upcoming, missed, collisions, stale
+  memory        Memory-layer health + activity (L1–L7, §10)
   events [N]    Last N events (default 20)
   all           Full summary
   json          Raw state dump
-  skill-drafts  List pending Hermes skill drafts (stub; full impl with memory.py)
+  skill-drafts  List pending Hermes skill drafts (age, summary, stale flag)
   evercore      EverCore (L7) substrate detail — ES/Milvus/Mongo/Redis/API + rerank
   profile-drift EverCore profile drift digest vs vault operator.md (§15 Item 13)
 """
 
 
-# P1.5-4 Step 8 stub — list ~/.hermes/skill-drafts/ contents.
-# Full implementation (mtime, summary, promotion gates) lands with the
-# memory.py listener per master_summary_v20 §12.4 / MEMORY_ARCHITECTURE §10.2.
+_STALE_DRAFT_DAYS = 30   # mirrors memory.py — drafts older than this are surfaced as stale
+
+
+def _draft_summary(skill_path: str) -> Optional[str]:
+    """One-line description from a draft SKILL.md: YAML `description:` first,
+    else the first real markdown line. None if unreadable."""
+    try:
+        text = Path(skill_path).read_text(errors="replace")
+    except OSError:
+        return None
+    m = re.search(r"^description:\s*(.+)$", text, re.M)
+    if m:
+        return m.group(1).strip().strip('"').strip("'")[:100]
+    for line in text.splitlines():
+        s = line.strip()
+        if not s or s == "---" or s.startswith("name:"):
+            continue
+        return s.lstrip("# ").strip()[:100]
+    return None
+
+
+# §10.3 skill-drafts surface. Lists pending Hermes drafts with age + one-line
+# summary; drafts >30d are flagged STALE (memory.py emits the matching Tier 2
+# memory_anomaly_detected event). Reads the filesystem directly — no daemon needed.
 def cmd_skill_drafts() -> None:
     import os
+    import time as _time
     drafts_dir = os.path.expanduser("~/.hermes/skill-drafts")
     if not os.path.isdir(drafts_dir):
         print(dim(f"No skill-drafts dir at {drafts_dir}"))
@@ -348,11 +413,27 @@ def cmd_skill_drafts() -> None:
     if not entries:
         print(dim("  (none — drafts dir is empty)"))
         return
+    stale_cutoff = _STALE_DRAFT_DAYS * 86400
     for name in entries:
         skill_path = os.path.join(drafts_dir, name, "SKILL.md")
         marker = "✓" if os.path.isfile(skill_path) else "?"
-        print(f"  {marker} {name}")
-    print(dim("Review with: invoke `approve-draft` skill in Hermes."))
+        try:
+            mt = os.path.getmtime(skill_path if os.path.isfile(skill_path)
+                                  else os.path.join(drafts_dir, name))
+            age_s = int(_time.time() - mt)
+        except OSError:
+            age_s = None
+        if age_s is None:
+            age_disp = dim("age unknown")
+        elif age_s > stale_cutoff:
+            age_disp = red(f"{_dur(age_s)} old — STALE >{_STALE_DRAFT_DAYS}d")
+        else:
+            age_disp = dim(f"{_dur(age_s)} old")
+        print(f"  {marker} {name:<28} {age_disp}")
+        summary = _draft_summary(skill_path)
+        if summary:
+            print(f"      {dim(summary)}")
+    print(dim("Review with: invoke `approve-draft` skill in Hermes (or edit / discard)."))
 
 def cmd_profile_drift() -> None:
     """Show the EverCore profile-drift digest (§15 Item 13). Reads the JSON
@@ -486,6 +567,8 @@ def main() -> None:
         cmd_workloads(model)
     elif cmd == "quotas":
         cmd_quotas(model)
+    elif cmd == "memory":
+        cmd_memory(model)
     elif cmd == "events":
         n = int(args[1]) if len(args) > 1 else 20
         cmd_events(model, n)

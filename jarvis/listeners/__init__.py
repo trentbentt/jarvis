@@ -3,7 +3,8 @@ from .tier_health import TierHealthListener
 from .process import ProcessListener
 from .quota import QuotaListener
 from .cron import CronListener
+from .memory import MemoryListener
 __all__ = [
     "VRAMListener", "TierHealthListener", "ProcessListener",
-    "QuotaListener", "CronListener",
+    "QuotaListener", "CronListener", "MemoryListener",
 ]

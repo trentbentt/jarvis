@@ -77,6 +77,13 @@ class OperatorState(str, Enum):
     SLEEPING = "sleeping"
     UNKNOWN  = "unknown"
 
+class MemoryLayerHealth(str, Enum):
+    OK             = "ok"
+    DEGRADED       = "degraded"
+    UNRESPONSIVE   = "unresponsive"
+    NOT_CONFIGURED = "not_configured"   # layer not yet built (e.g. L1 Redis → P1.5-6)
+    UNKNOWN        = "unknown"
+
 
 # ─── Hardware (static) ────────────────────────────────────────────────────────
 
@@ -396,6 +403,49 @@ class Health(BaseModel):
     last_full_sweep: Optional[datetime] = None
 
 
+# ─── Memory layers (memory.py, MEMORY_ARCHITECTURE §10.2) ─────────────────────
+# The 7-layer monarch memory architecture Jarvis observes as Arbiter. memory.py
+# actively probes the layers it owns (L3 pgvector SQL, L4 Hermes HTTP + state.db
+# mtime, L6 vault git) and mirrors the rest from existing signals (L2/L5/L7 from
+# health components; L1 is a not_configured placeholder until P1.5-6). Per-layer
+# health/activity/anomaly signals and cadences are defined in §10.1.
+
+class MemoryLayer(BaseModel):
+    layer: str                              # "L1".."L7"
+    name: str                               # "Redis", "pgvector", "Hermes", …
+    role: str                               # "Truth" | "Index" | "Memory"
+    mode: str                               # "probe" | "state" | "placeholder"
+    health: MemoryLayerHealth = MemoryLayerHealth.UNKNOWN
+    health_signal: Optional[str]   = None   # what the probe checked / its result
+    activity_signal: Optional[str] = None   # e.g. "85 chunks", "state.db 21h ago"
+    anomaly: Optional[str]         = None   # set when an anomaly is detected
+    source_component: Optional[str] = None  # health-component name for mode=state
+    last_check: Optional[datetime] = None
+    last_seen_healthy: Optional[datetime] = None
+    response_ms: Optional[int]     = None
+
+
+def _default_memory_layers() -> Dict[str, "MemoryLayer"]:
+    """Cold-start the 7 layer slots from MONARCH_MEMORY_LAYERS. Also fires when
+    load_from_disk() reads a state.json predating the memory domain."""
+    return {
+        m["layer"]: MemoryLayer(
+            layer=m["layer"], name=m["name"], role=m["role"], mode=m["mode"],
+            source_component=m.get("component"),
+            health=(MemoryLayerHealth.NOT_CONFIGURED if m["mode"] == "placeholder"
+                    else MemoryLayerHealth.UNKNOWN),
+        )
+        for m in MONARCH_MEMORY_LAYERS
+    }
+
+
+class MemoryLayers(BaseModel):
+    layers: Dict[str, MemoryLayer]   = Field(default_factory=_default_memory_layers)
+    skill_drafts_total: int          = 0
+    skill_drafts_stale: List[str]    = Field(default_factory=list)
+    last_sweep: Optional[datetime]   = None
+
+
 # ─── Top-level SystemModel ────────────────────────────────────────────────────
 
 class SystemModel(BaseModel):
@@ -416,6 +466,7 @@ class SystemModel(BaseModel):
     operator: Operator      = Field(default_factory=Operator)
     events: Events          = Field(default_factory=Events)
     health: Health          = Field(default_factory=Health)
+    memory: MemoryLayers    = Field(default_factory=MemoryLayers)
     last_updated: datetime  = Field(default_factory=datetime.utcnow)
     daemon_pid: Optional[int] = None
 
@@ -476,6 +527,23 @@ MONARCH_HEALTH_COMPONENTS = [
     {"name": "hermes",             "port": 8642},   # /v1/models, bearer auth
     {"name": "rerank-bge",         "port": 8088},   # llama-server reranker (/health), L7 EverCore rerank
     {"name": "evercore",           "port": 1995},   # L7 EverMemOS; composite probe (ES/Milvus/Mongo/Redis:6380/API:1995)
+]
+
+# ─── Memory architecture layers (MEMORY_ARCHITECTURE §10) ─────────────────────
+# Source-of-truth for the memory domain memory.py observes. mode:
+#   probe       — memory.py actively probes; it owns the signal (§10.2)
+#   state       — mirrored from an existing health component; no re-probe
+#                 (same non-duplication discipline as tier_health ↔ process)
+#   placeholder — not yet built; initializes not_configured (L1 → P1.5-6)
+# Boundaries locked 2026-05-29: active probes are {L3, L4, L6}.
+MONARCH_MEMORY_LAYERS = [
+    {"layer": "L1", "name": "Redis",           "role": "Truth",  "mode": "placeholder"},
+    {"layer": "L2", "name": "Postgres",        "role": "Truth",  "mode": "state", "component": "postgres"},
+    {"layer": "L3", "name": "pgvector",        "role": "Index",  "mode": "probe"},
+    {"layer": "L4", "name": "Hermes",          "role": "Memory", "mode": "probe"},
+    {"layer": "L5", "name": "Codebase-Memory", "role": "Index",  "mode": "state", "component": "codebase-memory"},
+    {"layer": "L6", "name": "Obsidian vault",  "role": "Truth",  "mode": "probe"},
+    {"layer": "L7", "name": "EverCore",        "role": "Memory", "mode": "state", "component": "evercore"},
 ]
 
 # Port → tier_id mapping (used by VRAM listener to attribute GPU memory)

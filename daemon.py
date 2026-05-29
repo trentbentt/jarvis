@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from jarvis.listeners import (
     CronListener,
+    MemoryListener,
     ProcessListener,
     QuotaListener,
     TierHealthListener,
@@ -58,6 +59,7 @@ def main() -> None:
         ProcessListener(),
         QuotaListener(),
         CronListener(),
+        MemoryListener(),
     ]
     for listener in listeners:
         listener.start()

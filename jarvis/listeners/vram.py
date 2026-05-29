@@ -8,13 +8,12 @@ StateStore.apply() — never holds the model lock directly.
 from __future__ import annotations
 
 import logging
-import re
 import subprocess
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Dict, Optional, Tuple
 
 from .base import BaseListener
+from .util import _port_from_cmdline
 from ..schema import OOMRisk, PORT_TO_TIER, TierState, VRAM_BASELINE
 from ..state import StateStore
 
@@ -69,24 +68,6 @@ def _get_process_vram() -> Dict[int, int]:
         except ValueError:
             continue
     return result
-
-
-def _port_from_cmdline(pid: int) -> Optional[int]:
-    try:
-        cmdline = Path(f"/proc/{pid}/cmdline").read_bytes()
-        args = cmdline.decode("utf-8", errors="replace").split("\x00")
-        for i, arg in enumerate(args):
-            if arg in ("--port", "-port") and i + 1 < len(args):
-                try:
-                    return int(args[i + 1])
-                except ValueError:
-                    pass
-            m = re.match(r"^--port=(\d+)$", arg)
-            if m:
-                return int(m.group(1))
-    except (FileNotFoundError, PermissionError):
-        pass
-    return None
 
 
 class VRAMListener(BaseListener):

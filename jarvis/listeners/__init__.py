@@ -1,3 +1,4 @@
 from .vram import VRAMListener
 from .tier_health import TierHealthListener
-__all__ = ["VRAMListener", "TierHealthListener"]
+from .process import ProcessListener
+__all__ = ["VRAMListener", "TierHealthListener", "ProcessListener"]

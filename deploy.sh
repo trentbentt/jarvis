@@ -71,7 +71,7 @@ python3 -c "
 import sys; sys.path.insert(0, '$JARVIS_DIR')
 from jarvis.schema import SystemModel
 from jarvis.state import StateStore
-from jarvis.listeners import VRAMListener, TierHealthListener
+from jarvis.listeners import VRAMListener, TierHealthListener, ProcessListener
 print('Package imports OK')
 " || { red "Import check failed — check the output above"; exit 1; }
 green "Package imports ✓"

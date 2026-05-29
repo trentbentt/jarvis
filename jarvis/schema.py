@@ -139,6 +139,11 @@ class TierRuntime(BaseModel):
     state: TierState              = TierState.UNKNOWN if False else TierState.STOPPED
     pid: Optional[int]            = None
     uptime_sec: Optional[int]     = None
+    # Process-observation fields — owned by process.py (master_summary §12.4).
+    rss_mb: int                   = 0
+    cpu_pct: float                = 0.0
+    restart_count_24h: int        = 0
+    last_restart_ts: Optional[datetime] = None
     last_health_check: Optional[datetime] = None
     health_status: HealthStatus   = HealthStatus.UNKNOWN
 

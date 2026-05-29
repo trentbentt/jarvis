@@ -59,6 +59,18 @@ def _ago(dt: Optional[datetime]) -> str:
         return f"{secs // 86400}d ago"
 
 
+def _dur(secs: Optional[int]) -> str:
+    if secs is None:
+        return dim("—")
+    if secs < 60:
+        return f"{secs}s"
+    if secs < 3600:
+        return f"{secs // 60}m"
+    if secs < 86400:
+        return f"{secs // 3600}h {(secs % 3600) // 60}m"
+    return f"{secs // 86400}d {(secs % 86400) // 3600}h"
+
+
 def _bar(used: int, total: int, width: int = 20) -> str:
     pct = used / total if total else 0
     filled = int(pct * width)
@@ -177,6 +189,23 @@ def cmd_tiers(model) -> None:
               f"vram:{vram:>5,}MiB  "
               f"{tok_str}"
               f"{lora}{offload}{cpu_tag}")
+
+        # Process-observation sub-line (process.py). Shown only when there's a
+        # live PID or a restart history — keeps STOPPED/OFFLINE tiers clean.
+        rt = tier.runtime
+        restarts = getattr(rt, "restart_count_24h", 0)
+        if rt.pid is not None or restarts > 0:
+            rst_str = str(restarts)
+            if restarts >= 5:
+                rst_str = red(rst_str)
+            elif restarts >= 3:
+                rst_str = yellow(rst_str)
+            pid_str = rt.pid if rt.pid is not None else "—"
+            print(f"        {dim('proc')} pid:{pid_str}  "
+                  f"rss:{getattr(rt, 'rss_mb', 0):,}MiB  "
+                  f"cpu:{getattr(rt, 'cpu_pct', 0.0):.0f}%  "
+                  f"up:{_dur(rt.uptime_sec)}  "
+                  f"restarts/24h:{rst_str}")
 
 
 def cmd_workloads(model) -> None:

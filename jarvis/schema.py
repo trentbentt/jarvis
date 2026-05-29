@@ -226,10 +226,46 @@ class ScheduledEvent(BaseModel):
     sla_target: Optional[str]    = None
     conflicts: List[Dict[str, Any]] = Field(default_factory=list)
 
+# ─── Cron reconciliation (cron.py, master_summary §12.4) ──────────────────────
+# All datetimes are UTC; cron is parsed in system-local tz then converted.
+
+class CronJob(BaseModel):
+    name: str                          # target-script basename
+    schedule: str                      # cron expression (5 fields or @macro)
+    command: str                       # full command, redirect stripped
+    log_path: Optional[str]   = None   # derived from the `>>` redirect
+    source: str               = "crontab"   # "crontab" | "/etc/cron.d/<file>"
+    next_run: Optional[datetime] = None
+
+class MissedRun(BaseModel):
+    name: str
+    scheduled_for: datetime
+    log_path: Optional[str]        = None
+    last_log_mtime: Optional[datetime] = None
+
+class ScheduledRun(BaseModel):
+    name: str
+    next_run: datetime
+
+class Collision(BaseModel):
+    job_a: str
+    job_b: str
+    run_a: datetime
+    run_b: datetime
+    gap_sec: int
+
+
 class Schedule(BaseModel):
     forecast_window_hours: int   = 24
     generated_at: datetime       = Field(default_factory=datetime.utcnow)
     upcoming: List[ScheduledEvent] = Field(default_factory=list)
+    # cron.py (master_summary §12.4)
+    cron_entries: List[CronJob]      = Field(default_factory=list)
+    missed_runs_24h: List[MissedRun] = Field(default_factory=list)
+    upcoming_60min: List[ScheduledRun] = Field(default_factory=list)
+    collisions: List[Collision]      = Field(default_factory=list)
+    stale_entries: List[str]         = Field(default_factory=list)
+    cron_updated_at: Optional[datetime] = None
 
 
 # ─── Quotas ───────────────────────────────────────────────────────────────────

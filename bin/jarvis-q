@@ -71,6 +71,15 @@ def _dur(secs: Optional[int]) -> str:
     return f"{secs // 86400}d {(secs % 86400) // 3600}h"
 
 
+def _local_hm(dt: Optional[datetime]) -> str:
+    """Format a UTC datetime as system-local HH:MM (cron runs in local tz)."""
+    if dt is None:
+        return dim("—")
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone().strftime("%H:%M")
+
+
 def _bar(used: int, total: int, width: int = 20) -> str:
     pct = used / total if total else 0
     filled = int(pct * width)
@@ -314,6 +323,7 @@ Commands:
   tiers         Tier state and performance
   workloads     Active and recent workloads
   quotas        Cloud API budget status
+  schedule      Cron reconciliation — upcoming, missed, collisions, stale
   events [N]    Last N events (default 20)
   all           Full summary
   json          Raw state dump
@@ -403,6 +413,43 @@ def cmd_evercore(model) -> None:
     print(dim("  Redis published on :6380 (6379 reserved for P1.5-6 L1 Redis)"))
 
 
+def cmd_schedule(model) -> None:
+    """Cron reconciliation — upcoming 60 min, missed 24h, collisions, stale."""
+    s = model.schedule
+    print(bold("── Schedule (cron) ──────────────────────────────────────"))
+
+    up = getattr(s, "upcoming_60min", [])
+    print(f"  {bold('Upcoming (next 60 min)')}:")
+    if up:
+        for r in up:
+            print(f"    {_local_hm(r.next_run)}  {r.name}")
+    else:
+        print(f"    {dim('none')}")
+
+    stale = getattr(s, "stale_entries", [])
+    if stale:
+        print(f"\n  {red('Stale entries')} (target script missing):")
+        for name in stale:
+            print(f"    {red('✗')} {name}")
+
+    missed = getattr(s, "missed_runs_24h", [])
+    if missed:
+        print(f"\n  {yellow('Missed runs (last 24h)')}:")
+        for m in missed:
+            print(f"    {yellow('⚠')} {m.name}  due {_local_hm(m.scheduled_for)}  "
+                  f"(log {_ago(m.last_log_mtime)})")
+
+    coll = getattr(s, "collisions", [])
+    if coll:
+        print(f"\n  {yellow('Collisions (next 60 min, <5 min apart)')}:")
+        for c in coll:
+            print(f"    {c.job_a} / {c.job_b}  {_local_hm(c.run_a)}±{c.gap_sec}s")
+
+    total = len(getattr(s, "cron_entries", []))
+    print(f"\n  {dim(f'{total} cron entries tracked')}  ·  "
+          f"updated {_ago(getattr(s, 'cron_updated_at', None))}")
+
+
 def main() -> None:
     args = sys.argv[1:]
     if not args:
@@ -444,6 +491,8 @@ def main() -> None:
         cmd_events(model, n)
     elif cmd == "evercore":
         cmd_evercore(model)
+    elif cmd == "schedule":
+        cmd_schedule(model)
     elif cmd == "all":
         cmd_all(model)
     elif cmd == "json":

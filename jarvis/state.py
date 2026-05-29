@@ -188,6 +188,29 @@ class StateStore:
                 for k in missing:
                     logger.info("load_from_disk: hydrating missing quota key: %s", k)
                     model.quotas.quotas[k] = fresh.quotas.quotas[k]
+
+            # Health-component reconciliation (same philosophy as quota hydration).
+            # state.json persists the last component list; when a new service is
+            # added to MONARCH_HEALTH_COMPONENTS (e.g. evercore, rerank-bge), hydrate
+            # it here so a daemon restart picks it up without discarding state.json.
+            # Preserve existing components' runtime state, add missing in canonical
+            # order, prune any no longer in the canonical set, and keep ports in sync.
+            canonical = {c["name"]: c for c in MONARCH_HEALTH_COMPONENTS}
+            existing = {c.name: c for c in model.health.components}
+            orphans = set(existing) - set(canonical)
+            if orphans:
+                logger.info("load_from_disk: pruning orphan health components: %s", sorted(orphans))
+            reconciled = []
+            for name, c in canonical.items():
+                if name in existing:
+                    comp = existing[name]
+                    comp.port = c["port"]
+                    reconciled.append(comp)
+                else:
+                    logger.info("load_from_disk: hydrating missing health component: %s", name)
+                    reconciled.append(ComponentHealth(name=name, port=c["port"],
+                                                       status=HealthStatus.UNKNOWN))
+            model.health.components = reconciled
             # ── End orphan-key prune ──────────────────────────────────────
             return model
         except Exception as e:

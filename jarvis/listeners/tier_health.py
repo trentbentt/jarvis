@@ -163,6 +163,38 @@ def _newest_mtime(path: str) -> Optional[datetime]:
         return None
 
 
+# ─── EverCore (L7) composite probe ────────────────────────────────────────────
+# EverCore is one logical service backed by 5 sub-services (docker substrate +
+# uv-run API). The `evercore` health component is OK iff ALL sub-probes pass;
+# its detail string always reports each sub-state (e.g. "es:ok milvus:ok ...")
+# so a partial outage is visible in `jarvis-q health` / `jarvis-q evercore`.
+# Redis is on :6380 (remapped from 6379, reserved for P1.5-6 L1 Redis).
+_EVERCORE_SUBPROBES = [
+    ("es",     "http", 19200, "/_cluster/health"),
+    ("milvus", "http",  9091, "/healthz"),
+    ("mongo",  "tcp",  27017, None),
+    ("redis",  "tcp",   6380, None),
+    ("api",    "http",  1995, "/health"),
+]
+
+
+def _evercore_check() -> tuple[bool, int, str]:
+    """Composite probe: returns (all_healthy, total_ms, detail). Detail lists
+    each sub-probe state regardless of overall result."""
+    start = time.monotonic()
+    parts: list[str] = []
+    all_ok = True
+    for label, kind, port, path in _EVERCORE_SUBPROBES:
+        if kind == "http":
+            ok, _ = _http_check(port, path)
+        else:
+            ok, _ = _tcp_check(port)
+        parts.append(f"{label}:{'ok' if ok else 'DOWN'}")
+        all_ok = all_ok and ok
+    ms = int((time.monotonic() - start) * 1000)
+    return all_ok, ms, " ".join(parts)
+
+
 _TIER_TO_COMPONENT = {
     "t1": "llama-server-t1",
     "t2": "llama-server-t2",
@@ -185,7 +217,10 @@ class TierHealthListener(BaseListener):
 
         updated_components: list[ComponentHealth] = []
         for comp in components_to_check:
-            if comp.name in _CLI_PROBE:
+            detail_override = None
+            if comp.name == "evercore":
+                healthy, ms, detail_override = _evercore_check()
+            elif comp.name in _CLI_PROBE:
                 healthy, ms = _cli_check(_CLI_PROBE[comp.name])
             elif comp.port is None:
                 updated_components.append(comp)
@@ -211,6 +246,10 @@ class TierHealthListener(BaseListener):
             else:
                 new_status = HealthStatus.UNRESPONSIVE
                 new_detail = f"no response on :{comp.port}"
+            # Composite probes (evercore) always report per-sub-probe detail,
+            # so a partial outage is visible even when overall status is OK/down.
+            if detail_override is not None:
+                new_detail = detail_override
             new_comp = ComponentHealth(
                 name=comp.name,
                 port=comp.port,

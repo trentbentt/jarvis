@@ -427,6 +427,8 @@ MONARCH_HEALTH_COMPONENTS = [
     {"name": "embed-nomic",        "port": 8087},
     {"name": "codebase-memory",    "port": None},   # stdio MCP; CLI-probed
     {"name": "hermes",             "port": 8642},   # /v1/models, bearer auth
+    {"name": "rerank-bge",         "port": 8088},   # llama-server reranker (/health), L7 EverCore rerank
+    {"name": "evercore",           "port": 1995},   # L7 EverMemOS; composite probe (ES/Milvus/Mongo/Redis:6380/API:1995)
 ]
 
 # Port → tier_id mapping (used by VRAM listener to attribute GPU memory)

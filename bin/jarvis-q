@@ -281,6 +281,8 @@ Commands:
   all           Full summary
   json          Raw state dump
   skill-drafts  List pending Hermes skill drafts (stub; full impl with memory.py)
+  evercore      EverCore (L7) substrate detail — ES/Milvus/Mongo/Redis/API + rerank
+  profile-drift EverCore profile drift digest vs vault operator.md (§15 Item 13)
 """
 
 
@@ -305,6 +307,65 @@ def cmd_skill_drafts() -> None:
         print(f"  {marker} {name}")
     print(dim("Review with: invoke `approve-draft` skill in Hermes."))
 
+def cmd_profile_drift() -> None:
+    """Show the EverCore profile-drift digest (§15 Item 13). Reads the JSON
+    written by ~/monarch-stack/evercore_profile_drift_check.sh (nightly 03:00 ET)."""
+    import os
+    f = os.path.expanduser("~/.local/state/jarvis/evercore_profile_drift.json")
+    print(bold("── EverCore Profile Drift (§15 Item 13) ─────────────────"))
+    if not os.path.isfile(f):
+        print(dim(f"  No digest at {f}"))
+        print(dim("  (Run evercore_profile_drift_check.sh — nightly cron 03:00 ET.)"))
+        return
+    d = json.load(open(f))
+    drift = d.get("drift")
+    print(f"  Status : {red('DRIFT ⚠') if drift else green('no drift')}")
+    print(f"  Checked: {d.get('timestamp')}")
+    if d.get("note"):
+        print(f"  Note   : {dim(d['note'])}")
+    added, removed = d.get("added", []), d.get("removed", [])
+    if added:
+        print(f"  {yellow('Added since baseline')} ({len(added)}):")
+        for a in added[:20]:
+            print(f"    {green('+')} {a}")
+    if removed:
+        print(f"  {yellow('Removed since baseline')} ({len(removed)}):")
+        for r in removed[:20]:
+            print(f"    {red('-')} {r}")
+    if d.get("vault_changed_since_baseline"):
+        print(f"  {yellow('⚠ vault operator.md changed since baseline')}")
+    if not drift:
+        print(dim(f"  {d.get('live_fact_count', d.get('fact_count','?'))} profile facts tracked"))
+    print(dim("\n  After operator review: evercore_profile_drift_check.sh --acknowledge"))
+
+
+def cmd_evercore(model) -> None:
+    """EverCore (L7) substrate detail — composite health sub-probes + rerank."""
+    print(bold("── EverCore (L7 EverMemOS) ──────────────────────────────"))
+    comps = {c.name: c for c in model.health.components}
+    ev = comps.get("evercore")
+    if ev is None:
+        print(dim("  evercore not registered yet — restart the daemon to pick up schema."))
+        return
+    ev_str = {
+        HealthStatus.OK: green("OK"), HealthStatus.UNRESPONSIVE: red("DOWN"),
+        HealthStatus.DEGRADED: yellow("DEGRADED"), HealthStatus.UNKNOWN: dim("UNKNOWN"),
+    }.get(ev.status, str(ev.status))
+    ms = f"{ev.response_ms}ms" if ev.response_ms else "—"
+    print(f"  Overall  : {ev_str}  ({ms}, checked {_ago(ev.last_check)})")
+    if ev.detail:
+        print("  Substrate:")
+        for tok in ev.detail.split():
+            if ":" in tok:
+                label, st = tok.split(":", 1)
+                print(f"    {label:<8}: {green('ok') if st == 'ok' else red(st)}")
+    rr = comps.get("rerank-bge")
+    if rr is not None:
+        rs = green("OK") if rr.status == HealthStatus.OK else red(str(rr.status))
+        print(f"  rerank-bge :8088 : {rs}")
+    print(dim("  Redis published on :6380 (6379 reserved for P1.5-6 L1 Redis)"))
+
+
 def main() -> None:
     args = sys.argv[1:]
     if not args:
@@ -313,9 +374,12 @@ def main() -> None:
 
     cmd = args[0].lower()
 
-    # skill-drafts reads the filesystem directly; no state file needed.
+    # skill-drafts and profile-drift read the filesystem directly; no state file needed.
     if cmd == "skill-drafts":
         cmd_skill_drafts()
+        return
+    if cmd == "profile-drift":
+        cmd_profile_drift()
         return
 
     model = StateStore.load_from_disk()
@@ -341,6 +405,8 @@ def main() -> None:
     elif cmd == "events":
         n = int(args[1]) if len(args) > 1 else 20
         cmd_events(model, n)
+    elif cmd == "evercore":
+        cmd_evercore(model)
     elif cmd == "all":
         cmd_all(model)
     elif cmd == "json":

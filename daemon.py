@@ -16,7 +16,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from jarvis.listeners import ProcessListener, TierHealthListener, VRAMListener
+from jarvis.listeners import (
+    ProcessListener,
+    QuotaListener,
+    TierHealthListener,
+    VRAMListener,
+)
 from jarvis.state import STATE_PATH, StateStore
 
 LOG_PATH = Path(os.environ.get(
@@ -50,6 +55,7 @@ def main() -> None:
         VRAMListener(),
         TierHealthListener(),
         ProcessListener(),
+        QuotaListener(),
     ]
     for listener in listeners:
         listener.start()

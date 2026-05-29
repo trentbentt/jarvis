@@ -249,6 +249,12 @@ class CloudQuota(BaseModel):
     threshold_warning_pct: float         = 80.0
     threshold_critical_pct: float        = 95.0
     last_updated: Optional[datetime]     = None
+    # Spend/token tracking fields — owned by quota.py (master_summary §12.4).
+    tokens_in_today: int                 = 0
+    tokens_out_today: int                = 0
+    spend_today_usd: float               = 0.0
+    last_call_ts: Optional[datetime]     = None
+    walls_in_window: int                 = 0   # 429 count; not in spend_logs — see quota.py
 
 class Quotas(BaseModel):
     # Populated by quota_listener. Keys match CloudQuota.name.

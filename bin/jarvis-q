@@ -259,7 +259,15 @@ def cmd_quotas(model) -> None:
             usage = dim("no data")
 
         wall = f"  wall:{_ago(q.projected_wall_at)}" if q.projected_wall_at else ""
-        print(f"  {name:<20} {status_str:<12}  {usage}{wall}")
+        walls = getattr(q, "walls_in_window", 0)
+        walls_str = (red(str(walls)) if walls else dim("0"))
+        last_call = _ago(getattr(q, "last_call_ts", None)) if getattr(q, "last_call_ts", None) else dim("never")
+        print(f"  {name:<20} {q.provider:<9} {q.period:<8} {status_str:<12}  "
+              f"{usage}  walls:{walls_str}  last:{last_call}{wall}")
+        tin = getattr(q, "tokens_in_today", 0)
+        tout = getattr(q, "tokens_out_today", 0)
+        if tin or tout:
+            print(f"        {dim('tokens today')} in:{tin:,}  out:{tout:,}")
 
 
 def cmd_events(model, n: int = 20) -> None:

@@ -28,7 +28,8 @@ from typing import Optional
 # Allow running as a script from any directory
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from jarvis.schema import HealthStatus, MemoryLayerHealth, OOMRisk, TierState
+from jarvis.schema import (ActionLifecycleState, ActionTier, HealthStatus,
+                           MemoryLayerHealth, OOMRisk, TierState)
 from jarvis.state import StateStore
 
 # ─── Colour helpers ────────────────────────────────────────────────────────────
@@ -367,6 +368,8 @@ Commands:
   quotas        Cloud API budget status
   schedule      Cron reconciliation — upcoming, missed, collisions, stale
   memory        Memory-layer health + activity (L1–L7, §10)
+  decisions     Decision-engine pending operator asks (§12.6)
+  authority     N=12 trust ledger — list | promote <id> | demote <id> [reason]
   events [N]    Last N events (default 20)
   all           Full summary
   json          Raw state dump
@@ -531,6 +534,113 @@ def cmd_schedule(model) -> None:
           f"updated {_ago(getattr(s, 'cron_updated_at', None))}")
 
 
+# ─── Decision engine surface (§12.6 / §9.5) ──────────────────────────────────
+
+_TIER_LABEL = {
+    1: "Tier 1 (auto-immediate)",
+    2: "Tier 2 (auto+log)",
+    3: "Tier 3 (ask)",
+}
+
+def _tier_str(tier) -> str:
+    n = int(tier)
+    label = _TIER_LABEL.get(n, f"Tier {n}")
+    return red(label) if n == 3 else (yellow(label) if n == 2 else green(label))
+
+
+def cmd_decisions(model) -> None:
+    """Pending operator asks raised by the decision engine + last tick."""
+    print(bold("── Decisions (pending asks) ─────────────────────────────"))
+    d = getattr(model, "decisions", None)
+    asks = getattr(d, "pending_asks", []) if d else []
+    if not asks:
+        print(f"  {dim('No pending asks')}")
+    for a in asks:
+        kind = a.kind.upper()
+        tier_tag = a.params.get("tier")
+        tier_tag = f"  [{tier_tag}]" if tier_tag else ""
+        block = dim("blocking") if a.blocking else dim("non-blocking")
+        print(f"  {yellow('●')} {bold(a.action_id)}{tier_tag}  "
+              f"{_tier_str(a.tier)}  {dim(kind)}  {block}")
+        print(f"      {dim(a.rationale)}")
+        print(f"      {dim('proposed ' + _ago(a.proposed_at))}")
+    if asks:
+        print(dim("\n  Approve a run / promotion:  jarvis-q authority promote <action_id>"))
+    print(f"\n  Last tick: {_ago(getattr(d, 'last_tick', None)) if d else dim('never')}")
+
+
+def cmd_authority(args) -> None:
+    """list | promote <action_id> | demote <action_id> [reason]
+
+    Reads/writes authority.json directly (canonical N=12 ledger) — works
+    without the daemon; the running engine reloads the ledger each tick."""
+    from jarvis.authority import AuthorityLedger, PROMOTION_THRESHOLD
+
+    sub = args[1].lower() if len(args) > 1 else "list"
+    led = AuthorityLedger()
+    led.load()
+
+    if sub == "list":
+        print(bold("── Authority ledger (§9.5.2 N=12) ───────────────────────"))
+        rows = led.records_list()
+        if not rows:
+            print(f"  {dim('No actions registered')}")
+        for r in rows:
+            state_str = {
+                ActionLifecycleState.COLD_START: dim("cold_start"),
+                ActionLifecycleState.ELIGIBLE:   yellow("ELIGIBLE ⬆"),
+                ActionLifecycleState.PROMOTED:   green("promoted"),
+                ActionLifecycleState.DEMOTED:    red("demoted"),
+            }.get(r.state, str(r.state))
+            outcome = r.last_outcome or "—"
+            print(f"  {bold(r.action_id)}")
+            print(f"      {_tier_str(r.current_tier)} → cap {_tier_str(r.target_tier)}  "
+                  f"runs:{r.clean_run_count}/{PROMOTION_THRESHOLD} clean  "
+                  f"({r.total_runs} total)  {state_str}")
+            print(f"      {dim(r.description)}")
+            print(f"      {dim('last: ' + outcome + '  ' + _ago(r.last_fired))}"
+                  + (f"  {red('demote: ' + r.demotion_reason)}" if r.demotion_reason else ""))
+        return
+
+    if sub in ("promote", "demote"):
+        if len(args) < 3:
+            print(red(f"Usage: jarvis-q authority {sub} <action_id>"))
+            sys.exit(1)
+        action_id = args[2]
+        row = led.get(action_id)
+        if row is None:
+            print(red(f"Unknown action: {action_id}"))
+            print(dim(f"Known: {', '.join(a.action_id for a in led.records_list())}"))
+            sys.exit(1)
+
+        if sub == "promote":
+            # Dual semantics (matches §9.5.2 + soak): an ELIGIBLE action's
+            # promotion ask is approved (tier bump); otherwise this is a
+            # one-shot per-run approval of a cold-start / Tier-3 run.
+            if row.state == ActionLifecycleState.ELIGIBLE:
+                if led.promote(action_id):
+                    print(green(f"✓ {action_id} promoted to Tier {int(led.get(action_id).current_tier)}"))
+                else:
+                    print(yellow(f"{action_id} could not be promoted (already at cap?)"))
+            else:
+                led.approve_run(action_id)
+                print(green(f"✓ approved one run for {action_id} "
+                            f"(Tier {int(row.current_tier)}); engine executes next tick"))
+            return
+
+        # demote
+        reason = " ".join(args[3:]) if len(args) > 3 else "operator regret (CLI demote)"
+        if led.demote(action_id, reason):
+            print(yellow(f"✓ {action_id} demoted to Tier 3 (count reset): {reason}"))
+        else:
+            print(red(f"Could not demote {action_id}"))
+        return
+
+    print(red(f"Unknown authority subcommand: {sub}"))
+    print(dim("Usage: jarvis-q authority {list|promote <id>|demote <id> [reason]}"))
+    sys.exit(1)
+
+
 def main() -> None:
     args = sys.argv[1:]
     if not args:
@@ -545,6 +655,10 @@ def main() -> None:
         return
     if cmd == "profile-drift":
         cmd_profile_drift()
+        return
+    # authority reads/writes authority.json directly — no state.json needed.
+    if cmd == "authority":
+        cmd_authority(args)
         return
 
     model = StateStore.load_from_disk()
@@ -569,6 +683,8 @@ def main() -> None:
         cmd_quotas(model)
     elif cmd == "memory":
         cmd_memory(model)
+    elif cmd == "decisions":
+        cmd_decisions(model)
     elif cmd == "events":
         n = int(args[1]) if len(args) > 1 else 20
         cmd_events(model, n)

@@ -24,6 +24,7 @@ from jarvis.listeners import (
     TierHealthListener,
     VRAMListener,
 )
+from jarvis.engine import DecisionEngine
 from jarvis.state import STATE_PATH, StateStore
 
 LOG_PATH = Path(os.environ.get(
@@ -66,6 +67,12 @@ def main() -> None:
     logger.info("Listeners started: %s",
                 ", ".join(f"{l.name}({l.interval_sec:.0f}s)" for l in listeners))
 
+    # Decision engine — pure consumer of listener signals (§12.6). Separate
+    # thread on its own tick; writes only the `decisions` domain.
+    engine = DecisionEngine()
+    engine.start()
+    logger.info("Decision engine started (%.0fs tick)", engine.interval_sec)
+
     _shutdown = [False]
 
     def _handle_signal(sig: int, _frame: object) -> None:
@@ -100,6 +107,9 @@ def main() -> None:
     logger.info("Stopping listeners…")
     for listener in listeners:
         listener.stop()
+
+    logger.info("Stopping decision engine…")
+    engine.stop()       # flushes the authority ledger
 
     time.sleep(1)
     try:

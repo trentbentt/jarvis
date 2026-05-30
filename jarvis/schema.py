@@ -21,7 +21,7 @@ cardinal decisions — this layer observes reality regardless of doctrine.
 from __future__ import annotations
 
 from datetime import datetime
-from enum import Enum
+from enum import Enum, IntEnum
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
@@ -387,6 +387,61 @@ class Events(BaseModel):
     log: List[Event]       = Field(default_factory=list)
 
 
+# ─── Decisions (engine.py + authority.py, master_summary §12.6 / §9.5) ────────
+# The decision engine's read-only projection onto the system model. The engine
+# is a pure CONSUMER of StateStore snapshots; the only domain it writes is this
+# one (pending asks + a read-only ledger projection for jarvis-q). The durable
+# N=12 trust counters live in authority.json (NOT state.json — §0.1 rule 5:
+# state.json is non-doctrine, pruned/rehydrated on cold-start). ActionRecord is
+# the ledger row shape; it is mirrored here purely so the CLI can render it.
+
+class ActionTier(IntEnum):
+    TIER_1 = 1   # autonomous-immediate (silent)
+    TIER_2 = 2   # autonomous-with-log
+    TIER_3 = 3   # surface-and-ask
+
+class ActionLifecycleState(str, Enum):
+    COLD_START = "cold_start"
+    ELIGIBLE   = "eligible"     # hit N=12; promotion ask pending operator approval
+    PROMOTED   = "promoted"
+    DEMOTED    = "demoted"
+
+class ProposedAction(BaseModel):
+    action_id: str                       # behavior id, e.g. "auto_restart_cpu_dataplane_tier"
+    trigger: str                         # "process.py:tier_crashed:t5"
+    params: Dict[str, Any] = Field(default_factory=dict)   # {"tier": "t5"}
+    dedup_key: str                       # stable per incident; cooldown key
+    rationale: str
+    proposed_at: datetime
+
+class ActionRecord(BaseModel):           # ledger row (canonical store = authority.json)
+    action_id: str
+    description: str = ""
+    current_tier: ActionTier = ActionTier.TIER_3
+    target_tier: ActionTier  = ActionTier.TIER_2     # promotion cap (seed = TIER_2)
+    clean_run_count: int = 0             # consecutive clean runs at current tier
+    total_runs: int = 0
+    last_fired: Optional[datetime] = None
+    last_outcome: Optional[str] = None   # "ok" | "failed" | "regretted"
+    state: ActionLifecycleState = ActionLifecycleState.COLD_START
+    demotion_reason: Optional[str] = None
+
+class PendingAsk(BaseModel):
+    action_id: str
+    params: Dict[str, Any] = Field(default_factory=dict)
+    rationale: str
+    proposed_at: datetime
+    tier: ActionTier = ActionTier.TIER_3
+    kind: str = "run"                    # "run" = per-run approval | "promotion" = N=12 ladder
+    blocking: bool = True                # non-blocking = timer + default-proceed (§9.5.1, stub)
+    expires_at: Optional[datetime] = None
+
+class Decisions(BaseModel):
+    pending_asks: List[PendingAsk] = Field(default_factory=list)
+    ledger: List[ActionRecord]     = Field(default_factory=list)   # read-only projection
+    last_tick: Optional[datetime]  = None
+
+
 # ─── Health ───────────────────────────────────────────────────────────────────
 
 class ComponentHealth(BaseModel):
@@ -467,6 +522,7 @@ class SystemModel(BaseModel):
     events: Events          = Field(default_factory=Events)
     health: Health          = Field(default_factory=Health)
     memory: MemoryLayers    = Field(default_factory=MemoryLayers)
+    decisions: Decisions    = Field(default_factory=Decisions)
     last_updated: datetime  = Field(default_factory=datetime.utcnow)
     daemon_pid: Optional[int] = None
 

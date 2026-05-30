@@ -66,6 +66,13 @@ _MTIME_FILES: dict[str, str] = {
 # reports IDLE (clean offload) instead of UNRESPONSIVE (unexpected failure).
 T2_IDLE_MARKER = "/home/monarch/.local/state/inference/t2_idle_marker"
 
+# Marker file written by ~/bin/inference-down on clean dataplane teardown,
+# removed by ~/bin/inference-up. When a cpu_only dataplane tier is unresponsive
+# AND this marker exists, the listener reports STOPPED (clean teardown) instead
+# of UNRESPONSIVE — so t3/t5 settle to STOPPED, not FAILED, on a dataplane
+# cycle. Genuine crashes (no marker) still surface as UNRESPONSIVE -> FAILED.
+DATAPLANE_IDLE_MARKER = "/home/monarch/.local/state/inference/dataplane_idle_marker"
+
 
 def _is_burst_idle(comp_name: str, snap) -> bool:
     """Return True if the component is mapped to a burst_only tier AND the
@@ -84,6 +91,23 @@ def _is_burst_idle(comp_name: str, snap) -> bool:
         return False
     return os.path.exists(T2_IDLE_MARKER)
 
+
+def _is_dataplane_clean_stop(comp_name: str, snap) -> bool:
+    """Return True if the component is mapped to a cpu_only dataplane tier AND
+    the dataplane teardown marker exists on disk. Caller has already established
+    the component is unresponsive."""
+    import os
+    tier_id = None
+    for tid, cname in _TIER_TO_COMPONENT.items():
+        if cname == comp_name:
+            tier_id = tid
+            break
+    if tier_id is None:
+        return False
+    tier = snap.tiers.get(tier_id)
+    if tier is None or not tier.config.cpu_only:
+        return False
+    return os.path.exists(DATAPLANE_IDLE_MARKER)
 
 
 def _http_check(port: int, path: str, timeout: float = 3.0,
@@ -243,6 +267,9 @@ class TierHealthListener(BaseListener):
             elif _is_burst_idle(comp.name, snap):
                 new_status = HealthStatus.IDLE
                 new_detail = "deepseek fallback active (clean idle)"
+            elif _is_dataplane_clean_stop(comp.name, snap):
+                new_status = HealthStatus.STOPPED
+                new_detail = "dataplane down (clean teardown)"
             else:
                 new_status = HealthStatus.UNRESPONSIVE
                 new_detail = f"no response on :{comp.port}"
@@ -301,6 +328,11 @@ class TierHealthListener(BaseListener):
                     tier.runtime.health_status = HealthStatus.IDLE
                     tier.runtime.last_health_check = now
                     if tier.runtime.state == TierState.ACTIVE:
+                        tier.runtime.state = TierState.STOPPED
+                elif comp.status == HealthStatus.STOPPED:
+                    tier.runtime.health_status = HealthStatus.STOPPED
+                    tier.runtime.last_health_check = now
+                    if tier.runtime.state in (TierState.ACTIVE, TierState.FAILED):
                         tier.runtime.state = TierState.STOPPED
                 else:
                     tier.runtime.health_status = HealthStatus.UNRESPONSIVE

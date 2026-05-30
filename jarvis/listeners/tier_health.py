@@ -295,7 +295,7 @@ class TierHealthListener(BaseListener):
                 if comp.status == HealthStatus.OK:
                     tier.runtime.health_status = HealthStatus.OK
                     tier.runtime.last_health_check = now
-                    if tier.runtime.state == TierState.STOPPED:
+                    if tier.runtime.state in (TierState.STOPPED, TierState.FAILED):
                         tier.runtime.state = TierState.ACTIVE
                 elif comp.status == HealthStatus.IDLE:
                     tier.runtime.health_status = HealthStatus.IDLE

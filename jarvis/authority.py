@@ -29,6 +29,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -220,7 +221,13 @@ class AuthorityGate:
     def __init__(self, store, ledger: AuthorityLedger) -> None:
         self.store = store
         self.ledger = ledger
-        self.pending: Dict[str, PendingAsk] = {}   # action_id → standing ask
+        self.pending: Dict[str, PendingAsk] = {}   # dedup_key → standing ask
+        # Off-thread action execution: a long subprocess must never freeze the
+        # decision loop. Workers run the action only; emit + ledger record are
+        # finalized on the engine thread via collect_finished().
+        self._exec_lock = threading.Lock()
+        self._in_flight: Dict[str, bool] = {}      # dedup_key → currently executing
+        self._finished: List[tuple] = []           # (proposed, emit_kind, outcome) to finalize
 
     # ── Classification ──────────────────────────────────────────────────────
     def classify(self, proposed: ProposedAction) -> ActionTier:
@@ -248,22 +255,15 @@ class AuthorityGate:
     def dispatch(self, proposed: ProposedAction) -> None:
         tier = self.classify(proposed)
         if tier == ActionTier.TIER_1:
-            outcome = self._act(proposed)            # silent
-            self.record_outcome(proposed.action_id, outcome)
+            self._spawn_exec(proposed, emit_kind="silent")
         elif tier == ActionTier.TIER_2:
-            outcome = self._act(proposed)
-            self.store.emit(
-                type="action", severity="info",
-                tier=proposed.params.get("tier"),
-                detail=f"{proposed.rationale} (Tier 2 autonomous-with-log)",
-                action_id=proposed.action_id, outcome=outcome,
-            )
-            self.record_outcome(proposed.action_id, outcome)
+            self._spawn_exec(proposed, emit_kind="tier2")
         else:  # TIER_3 — surface and ask, unless the operator pre-approved
             if self.ledger.consume_run_approval(proposed.action_id):
-                self._execute_approved(proposed)
+                self.pending.pop(proposed.dedup_key, None)
+                self._spawn_exec(proposed, emit_kind="approved")
             else:
-                self.pending[proposed.action_id] = PendingAsk(
+                self.pending[proposed.dedup_key] = PendingAsk(
                     action_id=proposed.action_id,
                     params=proposed.params,
                     rationale=proposed.rationale,
@@ -276,52 +276,97 @@ class AuthorityGate:
     def process_pending_approvals(self) -> set[str]:
         """Called every engine tick (even on cooldown). Executes any standing
         run-ask the operator approved between ticks, and clears promotion asks
-        the operator has acted on. Returns the set of action_ids executed this
+        the operator has acted on. Returns the set of dedup_keys handled this
         tick so the engine can arm their cooldown and skip same-tick re-asking
-        off a not-yet-refreshed snapshot."""
+        off a not-yet-refreshed snapshot. Keyed by dedup_key; ledger lookups use
+        ask.action_id (trust is per action, not per tier)."""
         executed: set[str] = set()
-        for action_id, ask in list(self.pending.items()):
+        for key, ask in list(self.pending.items()):
             if ask.kind == "run":
-                if self.ledger.consume_run_approval(action_id):
+                if self.ledger.consume_run_approval(ask.action_id):
                     proposed = ProposedAction(
                         action_id=ask.action_id, trigger="operator_approval",
-                        params=ask.params, dedup_key=f"{ask.action_id}:approved",
+                        params=ask.params, dedup_key=key,
                         rationale=ask.rationale, proposed_at=ask.proposed_at,
                     )
                     self._execute_approved(proposed)
-                    executed.add(action_id)
+                    executed.add(key)
             elif ask.kind == "promotion":
-                row = self.ledger.get(action_id)
+                row = self.ledger.get(ask.action_id)
                 if row and row.state == ActionLifecycleState.PROMOTED:
-                    del self.pending[action_id]   # operator approved the promotion
+                    del self.pending[key]   # operator approved the promotion
                     self.store.emit(
                         type="action", severity="info",
-                        detail=f"{action_id} promoted to Tier {int(row.current_tier)}",
-                        action_id=action_id,
+                        detail=f"{ask.action_id} promoted to Tier {int(row.current_tier)}",
+                        action_id=ask.action_id,
                     )
         return executed
 
-    def prune_stale_runs(self, active_action_ids: set[str]) -> None:
+    def prune_stale_runs(self, active_dedup_keys: set[str]) -> None:
         """Drop run-asks whose triggering condition no longer holds (the tier
         recovered — via this engine's restart or on its own). Promotion asks are
-        not condition-driven and are never pruned here."""
-        for action_id, ask in list(self.pending.items()):
-            if ask.kind == "run" and action_id not in active_action_ids:
-                logger.info("[authority] pruning stale run-ask %s (condition cleared)", action_id)
-                del self.pending[action_id]
+        not condition-driven and are never pruned here. Keyed by dedup_key so a
+        still-crashed t3 cannot keep a recovered t5's ask alive (or vice-versa)."""
+        for key, ask in list(self.pending.items()):
+            if ask.kind == "run" and key not in active_dedup_keys:
+                logger.info("[authority] pruning stale run-ask %s (condition cleared)", key)
+                del self.pending[key]
 
     def _execute_approved(self, proposed: ProposedAction) -> None:
-        # Clear the run ask FIRST — record_outcome() may enqueue a promotion ask
-        # under the same action_id (at N=12), which a later pop would clobber.
-        self.pending.pop(proposed.action_id, None)
-        outcome = self._act(proposed)
-        self.store.emit(
-            type="action", severity="info",
-            tier=proposed.params.get("tier"),
-            detail=f"{proposed.rationale} (operator-approved Tier 3 run)",
-            action_id=proposed.action_id, outcome=outcome,
-        )
-        self.record_outcome(proposed.action_id, outcome)
+        # Clear the standing run ask, then run OFF the engine thread — the
+        # subprocess can take minutes. collect_finished() finalizes (emit +
+        # record_outcome) back on the engine thread when the worker returns.
+        self.pending.pop(proposed.dedup_key, None)
+        self._spawn_exec(proposed, emit_kind="approved")
+
+    # ── Off-thread execution ────────────────────────────────────────────────
+    def _spawn_exec(self, proposed: ProposedAction, emit_kind: str) -> None:
+        """Run an action on a short-lived worker thread so a multi-minute
+        subprocess never freezes the decision loop. The worker ONLY runs the
+        action; emit + ledger record happen on the engine thread via
+        collect_finished(), keeping ledger access single-threaded."""
+        key = proposed.dedup_key
+        with self._exec_lock:
+            if key in self._in_flight:
+                return                            # already running — never double-run
+            self._in_flight[key] = True
+
+        def _worker() -> None:
+            outcome = self._act(proposed)
+            with self._exec_lock:
+                self._in_flight.pop(key, None)
+                self._finished.append((proposed, emit_kind, outcome))
+
+        threading.Thread(target=_worker, name=f"action-{key}", daemon=True).start()
+
+    def collect_finished(self) -> None:
+        """Finalize actions that finished executing off-thread: emit the
+        tier-appropriate event and record the outcome. MUST run on the engine
+        thread (it touches the ledger). Called once at the top of each tick."""
+        with self._exec_lock:
+            done = self._finished
+            self._finished = []
+        for proposed, emit_kind, outcome in done:
+            if emit_kind == "tier2":
+                self.store.emit(
+                    type="action", severity="info",
+                    tier=proposed.params.get("tier"),
+                    detail=f"{proposed.rationale} (Tier 2 autonomous-with-log)",
+                    action_id=proposed.action_id, outcome=outcome,
+                )
+            elif emit_kind == "approved":
+                self.store.emit(
+                    type="action", severity="info",
+                    tier=proposed.params.get("tier"),
+                    detail=f"{proposed.rationale} (operator-approved Tier 3 run)",
+                    action_id=proposed.action_id, outcome=outcome,
+                )
+            # emit_kind == "silent" (Tier 1): autonomous, no event by design
+            self.record_outcome(proposed.action_id, outcome)
+
+    def is_in_flight(self, dedup_key: str) -> bool:
+        with self._exec_lock:
+            return dedup_key in self._in_flight
 
     def _act(self, proposed: ProposedAction) -> str:
         action = ACTIONS.get(proposed.action_id)
@@ -352,7 +397,7 @@ class AuthorityGate:
                 and row.state != ActionLifecycleState.ELIGIBLE):
             row.state = ActionLifecycleState.ELIGIBLE
             self.ledger.save()
-            self.pending[action_id] = PendingAsk(
+            self.pending[f"{action_id}:promotion"] = PendingAsk(
                 action_id=action_id, params={},
                 rationale=(f"{action_id}: {row.clean_run_count} clean runs at "
                            f"Tier {int(row.current_tier)} — propose promotion to "
@@ -370,7 +415,10 @@ class AuthorityGate:
     def demote(self, action_id: str, reason: str) -> bool:
         ok = self.ledger.demote(action_id, reason)
         if ok:
-            self.pending.pop(action_id, None)
+            # pending is keyed by dedup_key; drop every ask for this action
+            # (run asks for any tier + the promotion ask).
+            for k in [k for k, a in self.pending.items() if a.action_id == action_id]:
+                self.pending.pop(k, None)
             self.store.emit(
                 type="action_demoted", severity="warning",
                 detail=f"{action_id} demoted to Tier 3: {reason}",

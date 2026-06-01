@@ -73,29 +73,38 @@ class DecisionEngine:
     def tick(self) -> None:
         # 1. reload ledger so CLI mutations (promote/demote/approve) take effect
         self.ledger.load()
+        # 1.5 finalize any actions that finished executing off-thread (emit +
+        #     record_outcome happen here, on the engine thread → ledger stays
+        #     single-writer even though the subprocess ran on a worker thread).
+        self.gate.collect_finished()
         # 2. execute any standing Tier-3 asks the operator approved between ticks
         executed = self.gate.process_pending_approvals()
         # 3. read-only snapshot
         snap = self.store.snapshot()
-        # 4. evaluate rules → this tick's live proposals
+        # 4. evaluate rules → this tick's live proposals, keyed by dedup_key so
+        #    distinct units of work (e.g. t3 vs t5 of the same action) never
+        #    collapse onto one another.
         proposed_now = {}
         for rule in RULES:
-            p = rule(snap)
-            if p is not None:
-                proposed_now[p.action_id] = p
+            for p in rule(snap):
+                proposed_now[p.dedup_key] = p
         # 5. GC: drop standing run-asks whose condition has resolved (tier
         #    recovered). Without this, an ask raised before recovery lingers.
         self.gate.prune_stale_runs(set(proposed_now))
-        # 6. dispatch live proposals (deduped + cooldown-gated)
-        for action_id, proposed in proposed_now.items():
-            if action_id in executed:
-                # Just ran this tick; the snapshot may not reflect recovery yet
-                # (tier_health lags). Arm cooldown and skip re-asking — prune
-                # clears it once the condition clears.
+        # 6. dispatch live proposals (deduped + cooldown-gated), per dedup_key
+        for dedup_key, proposed in proposed_now.items():
+            if dedup_key in executed:
+                # Just dispatched this tick; the snapshot may not reflect
+                # recovery yet (tier_health lags). Arm cooldown and skip
+                # re-asking — prune clears it once the condition clears.
                 self._mark(proposed.dedup_key)
                 continue
-            if action_id in self.gate.pending:
+            if dedup_key in self.gate.pending:
                 continue                              # already a standing ask
+            if self.gate.is_in_flight(dedup_key):
+                # Still executing on a worker thread; don't re-dispatch.
+                self._mark(proposed.dedup_key)
+                continue
             if self._on_cooldown(proposed.dedup_key):
                 continue
             self.gate.dispatch(proposed)

@@ -12,11 +12,11 @@ P3.1 ships ONE rule (the seed). master_summary §12.6.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Callable, List, Optional
+from typing import Callable, List
 
 from .schema import HealthStatus, ProposedAction, SystemModel, TierState
 
-Rule = Callable[[SystemModel], Optional[ProposedAction]]
+Rule = Callable[[SystemModel], List[ProposedAction]]
 
 # Crash detection reconciled against disk (P3.1 execution):
 #   • tier_health.py sets runtime.state = FAILED on an ACTIVE→unresponsive
@@ -42,11 +42,14 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def crashed_cpu_tier(model: SystemModel) -> Optional[ProposedAction]:
+def crashed_cpu_tier(model: SystemModel) -> List[ProposedAction]:
     """Seed rule: a T3/T5 CPU dataplane tier is crashed RIGHT NOW (state FAILED
     AND health_status UNRESPONSIVE) and is not flapping (restart_count_24h < 3).
-    Proposes an idempotent single-tier restart. Returns the first match; the
-    engine's cooldown prevents re-proposing while the condition persists."""
+    Proposes an idempotent single-tier restart PER crashed tier — a simultaneous
+    t3+t5 crash yields two proposals (distinct dedup_keys), so neither masks the
+    other. The engine's per-dedup_key cooldown prevents re-proposing while a
+    condition persists."""
+    out: List[ProposedAction] = []
     for tid in _SEED_TIERS:
         t = model.tiers.get(tid)
         if t is None:
@@ -55,15 +58,15 @@ def crashed_cpu_tier(model: SystemModel) -> Optional[ProposedAction]:
         if (rt.state == _CRASHED_STATE
                 and rt.health_status == _DOWN_HEALTH
                 and rt.restart_count_24h < _FLAP_THRESHOLD):
-            return ProposedAction(
+            out.append(ProposedAction(
                 action_id="auto_restart_cpu_dataplane_tier",
                 trigger=f"tier_health:tier_crashed:{tid}",
                 params={"tier": tid},
                 dedup_key=f"auto_restart_cpu_dataplane_tier:{tid}",
                 rationale=f"{tid} crashed (state=failed); idempotent restart via t{tid[-1]}-up",
                 proposed_at=_utcnow(),
-            )
-    return None
+            ))
+    return out
 
 
 RULES: List[Rule] = [crashed_cpu_tier]

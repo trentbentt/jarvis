@@ -2,7 +2,7 @@
 Jarvis System Model — Schema v0.1
 Host: monarch (RTX 3090 24GB, Ryzen 9 9900X, 96GB DDR5, Ubuntu 24.04)
 
-Nine top-level domains:
+Eleven top-level domains:
   hardware      — static, calibrated once
   tiers         — live state per tier T1–T5 (T6 offline by default)
   workloads     — active / pending / completed rolling window
@@ -12,6 +12,8 @@ Nine top-level domains:
   events        — append-only rolling log (~24h)
   health        — per-component health checks
   operator      — operator preferences and presence state
+  memory        — 7-layer memory architecture state (L1–L7)
+  decisions     — decision-engine domain (Phase 3.1 seed)
 
 Doctrine: schema fields are what Jarvis must know to function as a manager.
 Adding a field is a deliberate decision. Nothing here is inferred from
@@ -562,7 +564,7 @@ MONARCH_TIERS: Dict[str, TierConfig] = {
         tier_id="t6", enabled=False,  # offline by default
         model="Qwen3.6-35B-A3B", quant="UD-Q4_K_XL",
         context_size=65536, parallelism_np=1, port=8086,
-        expert_offload_pct=25,
+        expert_offload_pct=35,  # n_cpu_moe=14 measured operating point (E3 2026-05-30)
     ),
 }
 

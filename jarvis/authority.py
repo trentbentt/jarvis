@@ -26,9 +26,11 @@ Doctrine: master_summary §9.5 / §9.5.2 (authority model + N=12 lifecycle),
 
 from __future__ import annotations
 
+import fcntl
 import json
 import logging
 import os
+import tempfile
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
@@ -39,6 +41,7 @@ from .schema import (
     ActionLifecycleState,
     ActionRecord,
     ActionTier,
+    FLAP_THRESHOLD_24H,
     PendingAsk,
     ProposedAction,
 )
@@ -51,7 +54,7 @@ AUTHORITY_PATH = Path(os.environ.get(
 ))
 
 PROMOTION_THRESHOLD = 12   # §9.5.2 Item 7 — uniform across all actions
-_FLAP_THRESHOLD = 3        # mirrors process.py: >= this restarts/24h = flapping
+_FLAP_THRESHOLD = FLAP_THRESHOLD_24H   # shared single source (schema.py)
 
 
 def _utcnow() -> datetime:
@@ -131,9 +134,30 @@ class AuthorityLedger:
             "approved_runs": sorted(self.approved_runs),
             "saved_at": _utcnow().isoformat(),
         }
-        tmp = AUTHORITY_PATH.with_suffix(".tmp")
-        tmp.write_text(json.dumps(payload, indent=2, default=str))
-        tmp.replace(AUTHORITY_PATH)
+        blob = json.dumps(payload, indent=2, default=str)
+        # Cross-process write safety: the daemon (every mutating tick) and the CLI
+        # (jarvis-q promote/approve/demote) both write this file from SEPARATE
+        # processes. The old fixed ".tmp" path let two writers clobber the same
+        # scratch file and publish a torn JSON via replace(). Serialize writers
+        # with an advisory lock and stage through a unique per-write temp so
+        # neither can corrupt the other; os.replace stays atomic on the rename.
+        lock_path = AUTHORITY_PATH.with_suffix(".lock")
+        with open(lock_path, "w") as lock_fd:
+            fcntl.flock(lock_fd, fcntl.LOCK_EX)
+            fd, tmp_name = tempfile.mkstemp(
+                dir=str(AUTHORITY_PATH.parent), prefix=".authority-", suffix=".tmp")
+            try:
+                with os.fdopen(fd, "w") as f:
+                    f.write(blob)
+                    f.flush()
+                    os.fsync(f.fileno())
+                os.replace(tmp_name, AUTHORITY_PATH)
+            except Exception:
+                try:
+                    os.unlink(tmp_name)
+                except OSError:
+                    pass
+                raise
 
     # ── Accessors ───────────────────────────────────────────────────────────
     def get(self, action_id: str) -> Optional[ActionRecord]:

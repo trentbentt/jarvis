@@ -178,6 +178,14 @@ class CronListener(BaseListener):
                 prev_local = croniter(schedule, now_local).get_prev(datetime)
             except Exception:
                 continue
+            # croniter's tz propagation is version-dependent: some versions hand
+            # back NAIVE datetimes even for an aware base. now_local is aware, so
+            # an unguarded `now_local - prev_local` (below) would raise TypeError.
+            # Anchor any naive result to the local zone here, at the source.
+            if nxt_local.tzinfo is None:
+                nxt_local = nxt_local.replace(tzinfo=now_local.tzinfo)
+            if prev_local.tzinfo is None:
+                prev_local = prev_local.replace(tzinfo=now_local.tzinfo)
             nxt_utc = nxt_local.astimezone(timezone.utc)
 
             jobs.append(CronJob(

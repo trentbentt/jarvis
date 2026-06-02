@@ -25,16 +25,16 @@ import logging
 import os
 import subprocess
 
-from ..schema import ActionTier
+from ..schema import ActionTier, CPU_DATAPLANE_TIERS
 from .base import Action
 
 logger = logging.getLogger(__name__)
 
-_ALLOWED_TIERS = {"t3", "t5"}
-_TIER_SCRIPT = {
-    "t3": os.path.expanduser("~/bin/t3-up"),
-    "t5": os.path.expanduser("~/bin/t5-up"),
-}
+# Eligibility + launch scripts DERIVED from MONARCH_TIERS (cpu_only & enabled) so
+# this action and rules.py share one tier set — see schema.CPU_DATAPLANE_TIERS.
+# Today: {"t3","t5"} → ~/bin/t3-up | ~/bin/t5-up.
+_ALLOWED_TIERS = set(CPU_DATAPLANE_TIERS)
+_TIER_SCRIPT = {tid: os.path.expanduser(f"~/bin/{tid}-up") for tid in CPU_DATAPLANE_TIERS}
 # The launch scripts wait up to HEALTH_TIMEOUT (180s for T3, 120s for T5) for
 # /health; give the subprocess a margin beyond the longest of those.
 _RESTART_TIMEOUT_SEC = 240

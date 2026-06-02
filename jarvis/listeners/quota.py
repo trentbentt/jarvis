@@ -71,6 +71,17 @@ _TABLE_CANDIDATES = ["LiteLLM_SpendLogs", "spend_logs"]
 _TS_CANDIDATES = ["startTime", "start_time", "starttime"]
 
 
+def _aware(ts: Optional[datetime]) -> Optional[datetime]:
+    """Coerce a DB timestamp to UTC-aware. A `timestamp without time zone` column
+    yields a NAIVE datetime from psycopg2; stored unchanged into last_call_ts it
+    later crashes `jarvis-q quotas` on `datetime.now(utc) - last_call_ts`
+    (aware − naive → TypeError). LiteLLM writes startTime in UTC, so anchoring a
+    naive value to UTC is correct."""
+    if ts is not None and ts.tzinfo is None:
+        return ts.replace(tzinfo=timezone.utc)
+    return ts
+
+
 class QuotaListener(BaseListener):
     name = "quota"
     interval_sec = 60.0
@@ -145,7 +156,16 @@ class QuotaListener(BaseListener):
         return self._ts_col is not None
 
     def _query(self, conn) -> Optional[List[tuple]]:
-        """Aggregate today's spend/tokens per model. None if no spend table."""
+        """Per-model CUMULATIVE spend (prepaid-balance depletion) plus today's
+        spend/tokens and the most-recent call ts. None if no spend table.
+
+        §9.5.4 models cloud quotas as a manually-loaded PREPAID BALANCE with no
+        periodic reset — Jarvis treats remaining balance as a hard floor. So the
+        budget comparison is cumulative spend vs the loaded balance (budget_usd),
+        NOT a calendar day/week/month slice. The *_today fields still need today's
+        slice, aggregated in the same pass via FILTER. (Anchoring the cumulative
+        sum at the balance-reload instant is future work for when period_start is
+        populated on reload; in Phase A the spend log is per-balance-era.)"""
         with conn.cursor() as cur:
             if not self._resolve_schema(cur):
                 self._log_dormant("no spend-log table found (LiteLLM_SpendLogs / spend_logs)")
@@ -153,11 +173,11 @@ class QuotaListener(BaseListener):
             q = _sql.SQL(
                 "SELECT model, "
                 "COALESCE(SUM(spend),0)::float8, "
-                "COALESCE(SUM(prompt_tokens),0)::bigint, "
-                "COALESCE(SUM(completion_tokens),0)::bigint, "
+                "COALESCE(SUM(spend) FILTER (WHERE {ts} >= date_trunc('day', now())),0)::float8, "
+                "COALESCE(SUM(prompt_tokens) FILTER (WHERE {ts} >= date_trunc('day', now())),0)::bigint, "
+                "COALESCE(SUM(completion_tokens) FILTER (WHERE {ts} >= date_trunc('day', now())),0)::bigint, "
                 "MAX({ts}) "
                 "FROM {tbl} "
-                "WHERE {ts} >= date_trunc('day', now()) "
                 "GROUP BY model"
             ).format(ts=_sql.Identifier(self._ts_col), tbl=_sql.Identifier(self._table))
             cur.execute(q)
@@ -169,12 +189,15 @@ class QuotaListener(BaseListener):
 
         # Aggregate per quota key (several model strings may map to one key).
         agg: Dict[str, dict] = {}
-        for model, spend, ptok, ctok, last_ts in rows:
+        for model, cum_spend, today_spend, ptok, ctok, last_ts in rows:
             key = _MODEL_TO_QUOTA.get(model)
             if key is None:
                 continue
-            a = agg.setdefault(key, {"spend": 0.0, "in": 0, "out": 0, "last": None})
-            a["spend"] += float(spend or 0.0)
+            last_ts = _aware(last_ts)
+            a = agg.setdefault(key, {"cum": 0.0, "today": 0.0,
+                                     "in": 0, "out": 0, "last": None})
+            a["cum"] += float(cum_spend or 0.0)
+            a["today"] += float(today_spend or 0.0)
             a["in"] += int(ptok or 0)
             a["out"] += int(ctok or 0)
             if last_ts is not None and (a["last"] is None or last_ts > a["last"]):
@@ -193,8 +216,20 @@ class QuotaListener(BaseListener):
             q = snap.quotas.quotas.get(key)
             budget = q.budget_usd if q else None
             warn = q.threshold_warning_pct if q else 80.0
-            used = a["spend"]
-            pct = (used / budget * 100.0) if budget else None
+            # §9.5.4: prepaid balance, hard floor — compare CUMULATIVE spend
+            # against the loaded balance (budget_usd), not a daily/period slice.
+            # today's numbers feed the *_today fields below.
+            used = a["cum"]
+
+            # budget_usd == 0.0 is a HARD block (any spend walls the lane), not
+            # "untracked" — only a None budget is untracked. The old `if budget`
+            # truthiness test treated 0.0 as falsy, so a $0 hard-block never fired.
+            if budget is None:
+                pct = None
+            elif budget <= 0:
+                pct = 100.0 if used > 0 else 0.0
+            else:
+                pct = used / budget * 100.0
 
             if pct is not None and pct >= 100.0:
                 status = QuotaStatus.WALLED
@@ -229,8 +264,8 @@ class QuotaListener(BaseListener):
             self._last_spend[key] = (used, mono)
 
             payloads[key] = {
-                "used": used, "in": a["in"], "out": a["out"], "last": a["last"],
-                "status": status, "burn": burn_per_hour,
+                "used": used, "today": a["today"], "in": a["in"], "out": a["out"],
+                "last": a["last"], "status": status, "burn": burn_per_hour,
             }
 
         def update(model):
@@ -239,7 +274,7 @@ class QuotaListener(BaseListener):
                 if q is None:
                     continue
                 q.used_usd = p["used"]
-                q.spend_today_usd = p["used"]
+                q.spend_today_usd = p["today"]
                 q.tokens_in_today = p["in"]
                 q.tokens_out_today = p["out"]
                 q.last_call_ts = p["last"]

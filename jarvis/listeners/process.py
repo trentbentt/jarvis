@@ -26,14 +26,14 @@ from typing import Dict, List, Optional, Tuple
 
 from .base import BaseListener
 from .util import _port_from_cmdline
-from ..schema import PORT_TO_TIER
+from ..schema import FLAP_THRESHOLD_24H, PORT_TO_TIER
 from ..state import StateStore
 
 logger = logging.getLogger(__name__)
 
 _CLK_TCK = os.sysconf("SC_CLK_TCK")
 _NONE_DEBOUNCE = 2                     # consecutive PID=None polls before treating process as gone
-_FLAP_THRESHOLD = 3                    # restart_count_24h >= this → flapping (warning)
+_FLAP_THRESHOLD = FLAP_THRESHOLD_24H  # restart_count_24h >= this → flapping (warning); shared (schema.py)
 _RESTART_WINDOW = timedelta(hours=24)
 
 

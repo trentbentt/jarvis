@@ -145,7 +145,7 @@ class TierConfig(BaseModel):
     burst_only: bool       = False  # if True, skipped by standard inference-up bringup
 
 class TierRuntime(BaseModel):
-    state: TierState              = TierState.UNKNOWN if False else TierState.STOPPED
+    state: TierState              = TierState.STOPPED
     pid: Optional[int]            = None
     uptime_sec: Optional[int]     = None
     # Process-observation fields — owned by process.py (master_summary §12.4).
@@ -567,6 +567,20 @@ MONARCH_TIERS: Dict[str, TierConfig] = {
         expert_offload_pct=35,  # n_cpu_moe=14 measured operating point (E3 2026-05-30)
     ),
 }
+
+# Restartable zero-VRAM CPU dataplane tiers, DERIVED from MONARCH_TIERS so the
+# crash-detection rule (rules.py) and the restart action (restart_dataplane_tier.py)
+# stay in lockstep with tier config — no hand-maintained {"t3","t5"} literals to
+# drift if a tier's cpu_only/enabled flags change. Evaluates to ("t3", "t5") today.
+CPU_DATAPLANE_TIERS: tuple[str, ...] = tuple(
+    tid for tid, cfg in MONARCH_TIERS.items() if cfg.cpu_only and cfg.enabled
+)
+
+# Flapping guard: >= this many restarts in 24h means a tier is restart-looping;
+# don't auto-bounce it — surface to the operator instead. Single source shared by
+# process.py (emits the warning), rules.py (suppresses the proposal), and
+# authority.py (forces Tier 3 on a flapping tier).
+FLAP_THRESHOLD_24H = 3
 
 MONARCH_HEALTH_COMPONENTS = [
     {"name": "llama-server-t1",    "port": 8080},

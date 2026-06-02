@@ -228,6 +228,40 @@ _TIER_TO_COMPONENT = {
 }
 
 
+def _next_tier_state(old_state: TierState, status: HealthStatus) -> TierState:
+    """Single source of truth for the health-driven tier state machine, used by
+    BOTH the applied mutation and the event-detection pass so they can never
+    drift (the §597 gap: update() promoted FAILED→ACTIVE but the event table
+    only watched STOPPED→ACTIVE). Returns the new state, or old_state if this
+    probe result implies no transition.
+
+      OK           → STOPPED/FAILED recover to ACTIVE
+      IDLE         → ACTIVE drops to STOPPED (burst tier cleanly offloaded)
+      STOPPED      → ACTIVE/FAILED settle to STOPPED (clean dataplane teardown)
+      UNRESPONSIVE → only ACTIVE escalates to FAILED. A STOPPED tier reading
+                     UNRESPONSIVE is left STOPPED on purpose: inference-up clears
+                     the teardown marker at the START of bringup (inference-up:65)
+                     and documents (lines 61-64) that cpu tiers read UNRESPONSIVE
+                     while they warm — escalating that to FAILED would mislabel
+                     every warm-up and spuriously arm the restart rule. The
+                     warming/failed-to-start tier stays visible via
+                     health_status=UNRESPONSIVE.
+    """
+    if status == HealthStatus.OK:
+        if old_state in (TierState.STOPPED, TierState.FAILED):
+            return TierState.ACTIVE
+    elif status == HealthStatus.IDLE:
+        if old_state == TierState.ACTIVE:
+            return TierState.STOPPED
+    elif status == HealthStatus.STOPPED:
+        if old_state in (TierState.ACTIVE, TierState.FAILED):
+            return TierState.STOPPED
+    else:  # UNRESPONSIVE
+        if old_state == TierState.ACTIVE:
+            return TierState.FAILED
+    return old_state
+
+
 class TierHealthListener(BaseListener):
     name = "tier_health"
     interval_sec = 15.0
@@ -289,22 +323,19 @@ class TierHealthListener(BaseListener):
             updated_components.append(new_comp)
 
         health_map = {c.name: c for c in updated_components}
-        transitions: list[tuple[str, str, str]] = []
+        # Detect transitions from the SAME state machine update() applies below,
+        # so every applied state change emits its event — no silent FAILED→ACTIVE
+        # recovery or ACTIVE/FAILED→STOPPED teardown. Tuple: (tier, old, new, status).
+        transitions: list[tuple[str, TierState, TierState, HealthStatus]] = []
         for tier_id, comp_name in _TIER_TO_COMPONENT.items():
             comp = health_map.get(comp_name)
             old_tier = snap.tiers.get(tier_id)
             if comp is None or old_tier is None:
                 continue
             old_state = old_tier.runtime.state
-            if comp.status == HealthStatus.OK and old_state == TierState.STOPPED:
-                transitions.append((tier_id, "stopped_to_active",
-                                    f"{tier_id} transitioned stopped -> active"))
-            elif comp.status == HealthStatus.IDLE and old_state == TierState.ACTIVE:
-                transitions.append((tier_id, "active_to_idle",
-                                    f"{tier_id} entered burst-idle; deepseek fallback active"))
-            elif comp.status == HealthStatus.UNRESPONSIVE and old_state == TierState.ACTIVE:
-                transitions.append((tier_id, "active_to_failed",
-                                    f"{tier_id} unresponsive on :{old_tier.config.port}"))
+            new_state = _next_tier_state(old_state, comp.status)
+            if new_state != old_state:
+                transitions.append((tier_id, old_state, new_state, comp.status))
 
         def update(model):
             model.health.components = updated_components
@@ -319,46 +350,38 @@ class TierHealthListener(BaseListener):
                 if comp is None:
                     continue
 
-                if comp.status == HealthStatus.OK:
-                    tier.runtime.health_status = HealthStatus.OK
-                    tier.runtime.last_health_check = now
-                    if tier.runtime.state in (TierState.STOPPED, TierState.FAILED):
-                        tier.runtime.state = TierState.ACTIVE
-                elif comp.status == HealthStatus.IDLE:
-                    tier.runtime.health_status = HealthStatus.IDLE
-                    tier.runtime.last_health_check = now
-                    if tier.runtime.state == TierState.ACTIVE:
-                        tier.runtime.state = TierState.STOPPED
-                elif comp.status == HealthStatus.STOPPED:
-                    tier.runtime.health_status = HealthStatus.STOPPED
-                    tier.runtime.last_health_check = now
-                    if tier.runtime.state in (TierState.ACTIVE, TierState.FAILED):
-                        tier.runtime.state = TierState.STOPPED
-                else:
-                    tier.runtime.health_status = HealthStatus.UNRESPONSIVE
-                    tier.runtime.last_health_check = now
-                    if tier.runtime.state == TierState.ACTIVE:
-                        tier.runtime.state = TierState.FAILED
+                # comp.status is exactly the mapped health enum (OK/IDLE/STOPPED/
+                # UNRESPONSIVE), so mirror it onto runtime and resolve the new
+                # state through the shared machine — same logic the event-detection
+                # pass used, so applied state and emitted events cannot diverge.
+                tier.runtime.health_status = comp.status
+                tier.runtime.last_health_check = now
+                tier.runtime.state = _next_tier_state(tier.runtime.state, comp.status)
 
         store.apply(update)
 
-        for tier_id, kind, detail in transitions:
-            if kind == "stopped_to_active":
+        for tier_id, old_state, new_state, status in transitions:
+            label = f"{tier_id} {old_state.value} -> {new_state.value}"
+            if new_state == TierState.FAILED:
                 store.emit(
-                    type="tier_state_change", tier=tier_id, detail=detail,
-                )
-            elif kind == "active_to_idle":
-                store.emit(
-                    type="tier_burst_idle_entered",
+                    type="tier_health_failed", severity="warning",
                     tier=tier_id,
-                    detail=detail,
+                    detail=f"{label}: unresponsive",
                 )
-            elif kind == "active_to_failed":
+            elif new_state == TierState.ACTIVE:
                 store.emit(
-                    type="tier_health_failed",
-                    severity="warning",
-                    tier=tier_id,
-                    detail=detail,
+                    type="tier_state_change", tier=tier_id,
+                    detail=f"{label} (recovered)",
+                )
+            elif status == HealthStatus.IDLE:
+                store.emit(
+                    type="tier_burst_idle_entered", tier=tier_id,
+                    detail=f"{label}: burst-idle, deepseek fallback active",
+                )
+            else:  # status == HealthStatus.STOPPED → clean dataplane teardown
+                store.emit(
+                    type="tier_state_change", tier=tier_id,
+                    detail=f"{label} (clean teardown)",
                 )
 
         for comp in updated_components:

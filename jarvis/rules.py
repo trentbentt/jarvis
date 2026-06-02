@@ -14,7 +14,14 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Callable, List
 
-from .schema import HealthStatus, ProposedAction, SystemModel, TierState
+from .schema import (
+    CPU_DATAPLANE_TIERS,
+    FLAP_THRESHOLD_24H,
+    HealthStatus,
+    ProposedAction,
+    SystemModel,
+    TierState,
+)
 
 Rule = Callable[[SystemModel], List[ProposedAction]]
 
@@ -34,8 +41,8 @@ Rule = Callable[[SystemModel], List[ProposedAction]]
 # incidents. The engine's cooldown handles "one incident counts once" instead.)
 _CRASHED_STATE = TierState.FAILED
 _DOWN_HEALTH = HealthStatus.UNRESPONSIVE
-_FLAP_THRESHOLD = 3                      # >= this restarts/24h → flapping; don't auto-bounce
-_SEED_TIERS = ("t3", "t5")               # zero-VRAM CPU dataplane tiers
+_FLAP_THRESHOLD = FLAP_THRESHOLD_24H     # shared single source (schema.py)
+_SEED_TIERS = CPU_DATAPLANE_TIERS        # derived from MONARCH_TIERS (cpu_only & enabled)
 
 
 def _utcnow() -> datetime:
